@@ -4,10 +4,10 @@ All notable changes to the skills in this repo.
 
 ## [Unreleased]
 
-### Added
-- **`plan-exit-review`** and **`plan-mega-review`** by Garry Tan, mirrored with
-  attribution (links to the original gists in the README Credits and each
-  skill's footer).
+### Changed
+- Switched Garry Tan's `plan-exit-review` / `plan-mega-review` from bundled
+  mirrors to **links** (their gist text isn't openly licensed). See README
+  "Related skills by others". The repo now hosts only its own MIT-licensed work.
 
 ## [1.0.0] — 2026-07-24
 
