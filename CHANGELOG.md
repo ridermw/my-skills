@@ -4,10 +4,15 @@ All notable changes to the skills in this repo.
 
 ## [Unreleased]
 
-### Changed
-- Switched Garry Tan's `plan-exit-review` / `plan-mega-review` from bundled
-  mirrors to **links** (their gist text isn't openly licensed). See README
-  "Related skills by others". The repo now hosts only its own MIT-licensed work.
+### Added
+- **`plan-exit-review`** and **`plan-mega-review`** — adapted from Garry Tan's
+  MIT-licensed gstack skills (MIT © Garry Tan, upstream v2.0.0), modified for
+  standalone cross-stack use: portability (no Rails/CLAUDE.md/TODOS.md hard
+  deps), tool-independent questions (AskUserQuestion prose fallback), review-only
+  boundary, exit-review SMALL-mode fix, mega safety fixes (redacted logging,
+  idempotent retry, no fabricated p99, no over-logging), disambiguated triggers,
+  and an optional capability-gated independent pass. Each folder carries its own
+  MIT `LICENSE`; see `NOTICE`.
 
 ## [1.0.0] — 2026-07-24
 

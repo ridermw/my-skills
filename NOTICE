@@ -1,0 +1,19 @@
+my-skills — NOTICE
+==================
+
+This repository is MIT-licensed (see LICENSE), Copyright (c) 2026 Matthew Williams,
+except for the third-party components listed below, which are included under their
+own MIT license and copyright.
+
+Third-party components
+----------------------
+
+skills/plan-exit-review/
+skills/plan-mega-review/
+    Adapted from Garry Tan's "plan-exit-review" and "plan-mega-review" skills,
+    published in gstack (https://github.com/garrytan/gstack) under the MIT
+    License, Copyright (c) 2026 Garry Tan. Upstream version 2.0.0.
+    Modified for standalone, cross-stack use (portability, tool-independent
+    questions, review-only boundary, safety fixes). Modifications Copyright (c)
+    2026 Matthew Williams, also under the MIT License.
+    Each skill folder contains its own LICENSE file preserving both notices.

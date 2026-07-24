@@ -12,6 +12,8 @@ external setup — so you can drop it into your tool's skills directory and go.
 | Skill | Author | What it does |
 | --- | --- | --- |
 | [`project-room`](skills/project-room/) | this repo | Turn a messy pile of sources into an inspectable "project room" — source inventory, duplicate/conflict/missing-context logs, per-source summaries, working brief — then draft a **grounded, source-cited deliverable** from the reviewed room. Preparation before drafting; stable source IDs; never overwrites originals or invents facts. Works with zero prior setup. |
+| [`plan-exit-review`](skills/plan-exit-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Bounded, interactive engineering-readiness review of a plan before coding: scope challenge → architecture → code → tests → performance, with recommendation-first questions. Review only. |
+| [`plan-mega-review`](skills/plan-mega-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Maximum-rigor review for high-risk/cross-cutting plans (EXPANSION / HOLD / REDUCTION): system audit, failure-mode registry, threat model, observability + deploy. Review only. |
 
 ## Install
 
@@ -49,20 +51,21 @@ Each skill must stay **self-contained** (a single `SKILL.md`), portable (no
 machine-specific paths or private tools), and honest about its guardrails. PRs
 welcome.
 
-## Related skills by others
+## Credits & third-party skills
 
-Not bundled here (their gist text isn't openly licensed), but excellent
-companions for planning — by **Garry Tan**:
+`plan-exit-review` and `plan-mega-review` are adapted from **Garry Tan's** skills
+in [gstack](https://github.com/garrytan/gstack) (MIT © Garry Tan, upstream
+version 2.0.0), modified for standalone, cross-stack use — portability,
+tool-independent questions, a review-only boundary, and safety fixes. Each skill
+folder keeps its own `LICENSE` preserving Garry's copyright alongside the
+modifications. See [`NOTICE`](NOTICE).
 
-- **plan-exit-review** — interactive pre-implementation plan review (scope
-  challenge → architecture → code → tests → performance):
-  https://gist.github.com/garrytan/001f9074cab1a8f545ebecbc73a813df
-- **plan-mega-review** — maximum-rigor plan review (system audit, failure-mode
-  registry, threat model, observability + deploy):
-  https://gist.github.com/garrytan/120bdbbd17e1b3abd5332391d77963e7
-- **gstack** — Garry Tan's full suite these evolved into: https://github.com/garrytan/gstack
+- Original source: https://github.com/garrytan/gstack
+- The suite these evolved into (plan-eng/ceo/design/devex-review + autoplan): same repo.
 
 ## License
 
-[MIT](LICENSE) © Matthew Williams. Covers the skills authored in this repo.
-Linked third-party skills remain © their respective authors.
+[MIT](LICENSE) © Matthew Williams covers this repo's own work (`project-room`).
+The adapted `plan-exit-review` / `plan-mega-review` are MIT © Garry Tan with
+modifications MIT © Matthew Williams — see each folder's `LICENSE` and
+[`NOTICE`](NOTICE).
