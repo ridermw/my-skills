@@ -12,9 +12,10 @@ All notable changes to the skills in this repo.
   were indistinguishable, so the mandated `X advanced, Y up-to-date` summary was
   unobtainable. Both paths now capture the branch tip before and after and
   derive the result from the difference. Also fixed: `dirty` repos now report
-  the promised behind-count instead of nothing; a repo with **no remote** is
-  reported as `error: no remote` rather than `diverged` (`git fetch --all` exits
-  0 with no remotes, so the old guard never fired); a branch checked out in
+  the promised behind-count instead of nothing; a repo with no `origin` remote is
+  reported as `error: no origin remote` rather than misread as `no default
+  branch` (and `git fetch --all` exits 0 with no remotes at all, so the fetch
+  could not serve as the guard); a branch checked out in
   another worktree is separated from a genuinely diverged one; a missing
   upstream in `current-branch` scope is reported rather than silently falling
   back to the default branch; and `no default branch` is now reachable. The

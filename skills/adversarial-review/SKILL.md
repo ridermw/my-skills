@@ -31,7 +31,7 @@ Before substantive content, determine this once and reuse it:
 | One critique/generic subagent available | `single-subagent` |
 | No subagent tool available | `single-agent` |
 
-Target exactly three independent reviewer contexts whenever possible. If three distinct model-backed subagents cannot be launched, degrade gracefully to the best available independent contexts and disclose the downgrade.
+For a substantive artifact, target exactly three independent reviewer contexts whenever possible; see Proportionality below for when a smaller artifact does not warrant three. If three distinct model-backed subagents cannot be launched, degrade gracefully to the best available independent contexts and disclose the downgrade.
 
 **Proportionality.** Three reviewers are for a substantive artifact — a plan, a
 design, a diff, a decision with real consequences. For a single function, a
