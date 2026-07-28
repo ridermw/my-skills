@@ -43,11 +43,15 @@ such repos in the report and stop.
    recurse into a repo's own subdirs or `node_modules`). A directory is a clone
    if it contains a `.git` **directory**; linked worktrees and submodules, where
    `.git` is a file, are skipped (see Edge cases).
-2. **Confirm a remote exists**, then **fetch:** `git fetch --all --prune --quiet`.
-   A repo with no remote is `error: no remote` — note that `fetch --all` exits 0
-   there, so check `git remote` first rather than relying on the fetch to fail.
-   If the fetch itself fails (auth, network), record `error: fetch failed` and
-   continue to the next repo.
+2. **Confirm an `origin` remote exists**, then **fetch:**
+   `git fetch --all --prune --quiet`. The rest of this procedure resolves the
+   default branch and pushes/pulls through `origin` specifically, so check
+   `git remote get-url origin` rather than merely "some remote exists" — a clone
+   whose remote is named `upstream` would otherwise pass the guard and then be
+   misreported as `no default branch`. Note also that `fetch --all` exits 0 in a
+   repo with **no** remotes at all, so the guard cannot be the fetch itself.
+   Record `error: no origin remote` and move on. If the fetch fails (auth,
+   network), record `error: fetch failed` and continue to the next repo.
 3. **Resolve the default branch** from
    `git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, falling back to
    `refs/remotes/origin/main` then `refs/remotes/origin/master`. If none exists,
@@ -111,7 +115,7 @@ find "$ROOT" -maxdepth 2 -name .git -type d 2>/dev/null | while read -r g; do
   repo="$(dirname "$g")"; name="$(basename "$repo")"
   cur="$(git -C "$repo" branch --show-current 2>/dev/null)"
   [ -z "$cur" ] && { r "$name" "detached" "detached (skipped)"; continue; }
-  git -C "$repo" remote | grep -q . || { r "$name" "$cur" "error: no remote"; continue; }
+  git -C "$repo" remote get-url origin >/dev/null 2>&1 || { r "$name" "$cur" "error: no origin remote"; continue; }
   git -C "$repo" fetch --all --prune --quiet 2>/dev/null || { r "$name" "$cur" "error: fetch failed"; continue; }
   def="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
   for b in main master; do
@@ -139,7 +143,10 @@ find "$ROOT" -maxdepth 2 -name .git -type d 2>/dev/null | while read -r g; do
     else r "$name" "$target" "diverged (needs manual merge)"; fi
   else                                                   # update default branch without checkout
     before="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$def")"
-    if err="$(git -C "$repo" fetch origin "$def:$def" 2>&1 >/dev/null)"; then
+    # Order matters: 2>&1 then 1>/dev/null keeps stderr (needed below to tell a
+    # worktree collision from a real divergence) and drops stdout. Reversing it
+    # to `1>/dev/null 2>&1` sends stderr to /dev/null and empties $err.
+    if err="$(git -C "$repo" fetch origin "$def:$def" 2>&1 1>/dev/null)"; then
       after="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$def")"
       if   [ -z "$before" ];         then r "$name" "$def" "created local $def (on $cur)"
       elif [ "$before" = "$after" ]; then r "$name" "$def" "up-to-date (on $cur)"
@@ -165,9 +172,12 @@ summarize; do not narrate each repo.
   checked out in another worktree, with the same non-zero exit as a non-fast-
   forward. Report `in use by another worktree (skipped)`, not `diverged` — the
   first needs no action, the second needs a manual merge.
-- **No remote at all:** `git fetch --all` exits **0** in a repo with no remotes,
-  so an exit-code check will not catch it. Check `git remote` first and report
-  `error: no remote`.
+- **No `origin` remote:** everything here resolves through `origin`, so a repo
+  whose only remote is named something else (`upstream` on a fork, a renamed
+  remote) must be reported, not silently misread as `no default branch`. Guard
+  with `git remote get-url origin`, not a bare "does any remote exist" check —
+  and note `git fetch --all` exits **0** in a repo with no remotes at all, so
+  the fetch cannot serve as the guard either. Report `error: no origin remote`.
 - **No `origin/HEAD`:** fall back to `origin/main` then `origin/master`; if
   neither exists, report `no default branch`.
 - **Detached HEAD:** report `detached (skipped)`, never fast-forward.
