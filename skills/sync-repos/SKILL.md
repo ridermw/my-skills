@@ -48,15 +48,19 @@ such repos in the report and stop.
    them. If `root` is itself a clone *and* holds nested clones, both levels are
    in scope and every one of them appears in the report — nothing is updated
    invisibly, and every update is still fast-forward-only.
-2. **Confirm an `origin` remote exists**, then **fetch:**
-   `git fetch --all --prune --quiet`. The rest of this procedure resolves the
-   default branch and pushes/pulls through `origin` specifically, so check
-   `git remote get-url origin` rather than merely "some remote exists" — a clone
-   whose remote is named `upstream` would otherwise pass the guard and then be
-   misreported as `no default branch`. Note also that `fetch --all` exits 0 in a
-   repo with **no** remotes at all, so the guard cannot be the fetch itself.
-   Record `error: no origin remote` and move on. If the fetch fails (auth,
-   network), record `error: fetch failed` and continue to the next repo.
+2. **Confirm an `origin` remote exists**, then **fetch what this run actually
+   needs — not every remote.** Everything here resolves through `origin`, so
+   check `git remote get-url origin`: a clone whose remote is named `upstream`
+   would otherwise pass a bare "some remote exists" guard and then be
+   misreported as `no default branch`. Then `git fetch --prune --quiet origin`,
+   plus the current branch's own tracking remote when that is not `origin` (a
+   fork layout) — `@{u}` drives both the behind-count and the `current-branch`
+   merge, so skipping it would report a branch as up-to-date while it is behind.
+   Do **not** use `fetch --all`: it exits non-zero when *any* remote fails, so a
+   single unrelated broken remote would mark a perfectly healthy repo
+   `error: fetch failed`. Record `error: no origin remote` when `origin` is
+   missing, and `error: fetch failed` when a remote this run genuinely needs is
+   unreachable.
 3. **Resolve the default branch** from
    `git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, falling back to
    `refs/remotes/origin/main` then `refs/remotes/origin/master`. If none exists,
@@ -126,7 +130,14 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
   cur="$(git -C "$repo" branch --show-current 2>/dev/null)"
   [ -z "$cur" ] && { r "$name" "detached" "detached (skipped)"; continue; }
   git -C "$repo" remote get-url origin >/dev/null 2>&1 || { r "$name" "$cur" "error: no origin remote"; continue; }
-  git -C "$repo" fetch --all --prune --quiet 2>/dev/null || { r "$name" "$cur" "error: fetch failed"; continue; }
+  git -C "$repo" fetch --prune --quiet origin 2>/dev/null || { r "$name" "$cur" "error: fetch failed"; continue; }
+  # Also refresh the branch's own tracking remote when it isn't origin (fork
+  # layouts), since @{u} drives the behind-count and the current-branch merge.
+  # Any other remote is irrelevant here — fetching it could only fail the run.
+  upr="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; upr="${upr%%/*}"
+  if [ -n "$upr" ] && [ "$upr" != origin ]; then
+    git -C "$repo" fetch --prune --quiet "$upr" 2>/dev/null || { r "$name" "$cur" "error: fetch failed ($upr)"; continue; }
+  fi
   def="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
   for b in main master; do
     [ -n "$def" ] && break
@@ -185,9 +196,11 @@ summarize; do not narrate each repo.
 - **No `origin` remote:** everything here resolves through `origin`, so a repo
   whose only remote is named something else (`upstream` on a fork, a renamed
   remote) must be reported, not silently misread as `no default branch`. Guard
-  with `git remote get-url origin`, not a bare "does any remote exist" check —
-  and note `git fetch --all` exits **0** in a repo with no remotes at all, so
-  the fetch cannot serve as the guard either. Report `error: no origin remote`.
+  with `git remote get-url origin`. Report `error: no origin remote`.
+- **Several remotes:** fetch only `origin` and the current branch's tracking
+  remote. `fetch --all` couples the run's success to remotes it never reads —
+  one broken remote fails the whole fetch and the repo is reported as
+  `error: fetch failed` while `origin` is perfectly healthy.
 - **No `origin/HEAD`:** fall back to `origin/main` then `origin/master`; if
   neither exists, report `no default branch`.
 - **Detached HEAD:** report `detached (skipped)`, never fast-forward.
