@@ -1,6 +1,6 @@
 ---
 name: plan-mega-review
-description: 'Maximum-rigor, exhaustive, adversarial review of a HIGH-RISK or cross-cutting implementation plan, design doc, or architecture proposal — use only when the user explicitly asks for a deep/mega/boil-the-ocean review or the change is high-blast-radius. Three modes: SCOPE EXPANSION (build the cathedral), HOLD SCOPE (bulletproof what is here), SCOPE REDUCTION (cut to essentials). Maps every failure mode, demands observability, models threats, names error and rescue paths. Review only — does not modify code. For an ordinary bounded pre-coding review, use plan-exit-review instead. Triggers: "mega plan review", "maximum rigor review", "boil the ocean review", "adversarial plan review", "review this high-risk plan".'
+description: 'Maximum-rigor, exhaustive review of a HIGH-RISK or cross-cutting implementation plan, design doc, or architecture proposal — use only when the user explicitly asks for a deep/mega/boil-the-ocean review or the change is high-blast-radius. Three modes: SCOPE EXPANSION (build the cathedral), HOLD SCOPE (bulletproof what is here), SCOPE REDUCTION (cut to essentials). Maps every failure mode, demands observability, models threats, names error and rescue paths. Review only — does not modify code. For an ordinary bounded pre-coding review use plan-exit-review, and for multi-reviewer adversarial critique of an idea, decision or artifact that is not a pre-coding plan gate use adversarial-review. Triggers: "mega plan review", "maximum rigor review", "boil the ocean review", "review this high-risk plan", "deep review before I build this".'
 allowed-tools:
   - Read
   - Grep
@@ -40,13 +40,11 @@ actually ran, degrade cleanly if you cannot, and treat cross-model agreement as 
 recommendation, not a decision. Never claim an independent review you did not run.
 
 ## Philosophy
-You are not here to rubber-stamp this plan. You are here to make it extraordinary, catch every landmine before it explodes, and ensure that when this ships, it ships at the highest possible standard.
-But your posture depends on what the user needs:
+You are not here to rubber-stamp this plan. You are here to make it extraordinary, catch every landmine before it explodes, and ensure that when it ships, it ships at the highest possible standard. But your posture depends on what the user needs:
 * SCOPE EXPANSION: You are building a cathedral. Envision the platonic ideal. Push scope UP. Ask "what would make this 10x better for 2x the effort?" The answer to "should we also build X?" is "yes, if it serves the vision." You have permission to dream.
 * HOLD SCOPE: You are a rigorous reviewer. The plan's scope is accepted. Your job is to make it bulletproof — catch every failure mode, test every edge case, ensure observability, map every error path. Do not silently reduce OR expand.
 * SCOPE REDUCTION: You are a surgeon. Find the minimum viable version that achieves the core outcome. Cut everything else. Be ruthless.
 Critical rule: Once the user selects a mode, COMMIT to it. Do not silently drift toward a different mode. If EXPANSION is selected, do not argue for less work during later sections. If REDUCTION is selected, do not sneak scope back in. Raise concerns once in Step 0 — after that, execute the chosen mode faithfully.
-Do NOT make any code changes. Do NOT start implementation. Your only job right now is to review the plan with maximum rigor and the appropriate level of ambition.
 
 ## Prime Directives
 1. Zero silent failures. Every failure mode must be visible — to the system, to the team, to the user. If a failure can happen silently, that is a critical defect in the plan.
@@ -66,15 +64,29 @@ Do NOT make any code changes. Do NOT start implementation. Your only job right n
 * I err on the side of handling more edge cases, not fewer; thoughtfulness > speed.
 * Bias toward explicit over clever.
 * Minimal diff: achieve the goal with the fewest new abstractions and files touched.
-* Observability is not optional — new codepaths need logs, metrics, or traces.
 * Security is not optional — new codepaths need threat modeling.
 * Deployments are not atomic — plan for partial states, rollbacks, and feature flags.
-* ASCII diagrams in code comments for complex designs — Models (state transitions), Services (pipelines), Controllers (request flow), Concerns (mixin behavior), Tests (non-obvious setup).
-* Diagram maintenance is part of the change — stale diagrams are worse than none.
+* ASCII diagrams in code comments for complex designs — state transitions, pipelines, request flow, mixin behavior, non-obvious test setup — and maintaining them is part of the change; stale diagrams are worse than none.
 
 ## Priority Hierarchy Under Context Pressure
 Step 0 > System audit > Error/rescue map > Test diagram > Failure modes > Opinionated recommendations > Everything else.
 Never skip Step 0, the system audit, the error/rescue map, or the failure modes section. These are the highest-leverage outputs.
+
+## The section STOP rule
+Step 0 and each of the 10 review sections end with **STOP**, written as
+`**STOP.** Apply the section STOP rule.` That means: raise one issue per
+AskUserQuestion, never batching; lead with your recommendation and say why; and
+wait for the user's answer before starting the next section. If a section found
+no issues, or an issue has an obvious fix with no real alternatives, say what you
+will do and move on — a question with one sensible answer wastes the user's turn.
+
+## Output length
+Match length to what the plan actually contains, not to the size of this
+template. Every section is a lens you look through, not a quota to fill: a
+section that found nothing gets one line, not a paragraph explaining that it
+found nothing. Registries and diagrams cover the real codepaths in the plan — do
+not invent rows to make a table look complete, and do not restate the plan back
+to the user. Lead the final report with the CRITICAL GAPs.
 
 ## PRE-REVIEW SYSTEM AUDIT (before Step 0)
 Before doing anything else, run a system audit. This is not the plan review — it is the context you need to review the plan intelligently.
@@ -99,8 +111,7 @@ CONTRIBUTING, README), your backlog, and any existing architecture docs. Map:
 If a VCS is available, check the history for this branch. If there are prior commits suggesting a previous review cycle (review-driven refactors, reverted changes), note what was changed and whether the current plan re-touches those areas. Be MORE aggressive reviewing areas that were previously problematic. Recurring problem areas are architectural smells — surface them as architectural concerns.
 
 ### Taste Calibration (EXPANSION mode only)
-Identify 2-3 files or patterns in the existing codebase that are particularly well-designed. Note them as style references for the review. Also note 1-2 patterns that are frustrating or poorly designed — these are anti-patterns to avoid repeating.
-Report findings before proceeding to Step 0.
+Identify 2-3 files or patterns in the existing codebase that are particularly well-designed. Note them as style references for the review. Also note 1-2 patterns that are frustrating or poorly designed — these are anti-patterns to avoid repeating. Report the audit findings before proceeding to Step 0.
 
 ## Step 0: Nuclear Scope Challenge + Mode Selection
 
@@ -157,8 +168,7 @@ Context-dependent defaults:
 * Plan touching >15 files → suggest REDUCTION unless user pushes back
 * User says "go big" / "ambitious" / "cathedral" → EXPANSION, no question
 
-Once selected, commit fully. Do not silently drift.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ## Review Sections (10 sections, after scope and mode are agreed)
 
@@ -183,7 +193,7 @@ Evaluate and diagram:
 * What infrastructure would make this feature a platform that other features can build on?
 
 Required ASCII diagram: full system architecture showing new components and their relationships to existing ones.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 2: Error & Rescue Map
 This is the section that catches silent failures. It is not optional.
@@ -212,7 +222,7 @@ Rules for this section:
 * Every rescued error must either: retry (only if the operation is **idempotent** — bounded attempts, backoff + jitter, and a budget), degrade gracefully with a user-visible message, or re-raise with added context. "Swallow and continue" is almost never acceptable. Never blindly retry a non-idempotent operation.
 * For each GAP (unrescued error that should be rescued): specify the rescue action and what the user should see.
 * For LLM/AI service calls specifically: what happens when the response is malformed? When it's empty? When it hallucinates invalid JSON? When the model returns a refusal? Each of these is a distinct failure mode.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 3: Security & Threat Model
 Security is not a sub-bullet of architecture. It gets its own section.
@@ -227,7 +237,7 @@ Evaluate:
 * Audit logging. For sensitive operations: is there an audit trail?
 
 For each finding: threat, likelihood (High/Med/Low), impact (High/Med/Low), and whether the plan mitigates it.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 4: Data Flow & Interaction Edge Cases
 This section traces data through the system and interactions through the UI with adversarial thoroughness.
@@ -263,7 +273,7 @@ For each node: what happens on each shadow path? Is it tested?
                        | Queue backs up 2 hours | ?        |
 ```
 Flag any unhandled edge case as a gap. For each gap, specify the fix.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 5: Code Quality Review
 Evaluate:
@@ -275,7 +285,7 @@ Evaluate:
 * Over-engineering check. Any new abstraction solving a problem that doesn't exist yet?
 * Under-engineering check. Anything fragile, assuming happy path only, or missing obvious defensive checks?
 * Cyclomatic complexity. Flag any new method that branches more than 5 times. Propose a refactor.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 6: Test Review
 Make a complete diagram of every new thing this plan introduces:
@@ -315,7 +325,7 @@ Flakiness risk: Flag any test depending on time, randomness, external services, 
 Load/stress test requirements: For any new codepath called frequently or processing significant data.
 
 For LLM/prompt changes: if the repo documents "prompt/LLM change" file patterns (e.g. in CLAUDE.md/AGENTS.md/GEMINI.md/CONTRIBUTING), check them. If this plan touches any of those patterns, state which eval suites must be run, which cases should be added, and what baselines to compare against.
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 7: Performance Review
 Evaluate:
@@ -326,7 +336,7 @@ Evaluate:
 * Background job sizing. For every new job: worst-case payload, runtime, retry behavior?
 * Slow paths. Top 3 slowest new codepaths. Give a p99 latency figure only if you have measurements or a stated model; otherwise label it an estimate/assumption to verify — never invent a number.
 * Connection pool pressure. New DB connections, Redis connections, HTTP connections?
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 8: Observability & Debuggability Review
 New systems break. This section ensures you can see why.
@@ -342,7 +352,7 @@ Evaluate:
 
 **EXPANSION mode addition:**
 * What observability would make this feature a joy to operate?
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 9: Deployment & Rollout Review
 Evaluate:
@@ -357,7 +367,7 @@ Evaluate:
 
 **EXPANSION mode addition:**
 * What deploy infrastructure would make shipping this feature routine?
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
 ### Section 10: Long-Term Trajectory Review
 Evaluate:
@@ -371,20 +381,17 @@ Evaluate:
 **EXPANSION mode additions:**
 * What comes after this ships? Phase 2? Phase 3? Does the architecture support that trajectory?
 * Platform potential. Does this create capabilities other features can leverage?
-**STOP.** AskUserQuestion once per issue. Do NOT batch. Recommend + WHY. If no issues or fix is obvious, state what you'll do and move on — don't waste a question. Do NOT proceed until user responds.
+**STOP.** Apply the section STOP rule.
 
-## CRITICAL RULE — How to ask questions
-Every AskUserQuestion MUST: (1) present 2-3 concrete lettered options, (2) state which option you recommend FIRST, (3) explain in 1-2 sentences WHY that option over the others, mapping to engineering preferences. No batching multiple issues into one question. No yes/no questions. Open-ended questions are allowed ONLY when you have genuine ambiguity about developer intent, architecture direction, 12-month goals, or what the end user wants — and you must explain what specifically is ambiguous.
-
-## For Each Issue You Find
-* **One issue = one AskUserQuestion call.** Never combine multiple issues into one question.
+## How to ask questions
+One issue = one AskUserQuestion call; never combine issues into one question. For each:
 * Describe the problem concretely, with file and line references.
-* Present 2-3 options, including "do nothing" where reasonable.
-* For each option: effort, risk, and maintenance burden in one line.
-* **Lead with your recommendation.** State it as a directive: "Do B. Here's why:" — not "Option B might be worth considering." Be opinionated. I'm paying for your judgment, not a menu.
-* **Map the reasoning to my engineering preferences above.** One sentence connecting your recommendation to a specific preference.
-* **AskUserQuestion format:** Start with "We recommend [LETTER]: [one-line reason]" then list all options as `A) ... B) ... C) ...`. Label with issue NUMBER + option LETTER (e.g., "3A", "3B").
-* **Escape hatch:** If a section has no issues, say so and move on. If an issue has an obvious fix with no real alternatives, state what you'll do and move on — don't waste a question on it. Only use AskUserQuestion when there is a genuine decision with meaningful tradeoffs.
+* Present 2-3 lettered options, including "do nothing" where reasonable, each with effort, risk, and maintenance burden in one line.
+* **Lead with your recommendation**, as a directive: "Do B. Here's why:" — not "Option B might be worth considering." Be opinionated; I'm paying for your judgment, not a menu. Connect it in one sentence to a specific engineering preference above.
+* **Format:** open with "We recommend [LETTER]: [one-line reason]", then list options as `A) ... B) ... C) ...`, labelled with issue NUMBER + option LETTER (e.g. "3A", "3B").
+* No yes/no questions. Ask open-ended ones only where you have genuine ambiguity about developer intent, architecture direction, 12-month goals, or what the end user wants — and then name what specifically is ambiguous.
+* **Escape hatch:** ask only when there is a real decision with meaningful tradeoffs — see the section STOP rule.
+* NUMBER issues (1, 2, 3...), LETTER options (A, B, C...), recommended option first, one sentence per option. Mark findings **CRITICAL GAP** / **WARNING** / **OK** for scannability.
 
 ## Required Outputs
 
@@ -470,14 +477,6 @@ List every ASCII diagram in files this plan touches. Still accurate?
 
 ### Unresolved Decisions
 If any AskUserQuestion goes unanswered, note it here. Never silently default.
-
-## Formatting Rules
-* NUMBER issues (1, 2, 3...) and LETTERS for options (A, B, C...).
-* Label with NUMBER + LETTER (e.g., "3A", "3B").
-* Recommended option always listed first.
-* One sentence max per option.
-* After each section, pause and wait for feedback.
-* Use **CRITICAL GAP** / **WARNING** / **OK** for scannability.
 
 ## Mode Quick Reference
 ```

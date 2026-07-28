@@ -4,6 +4,53 @@ All notable changes to the skills in this repo.
 
 ## [Unreleased]
 
+### Fixed
+- **`sync-repos`** — the reference script could not produce its own documented
+  report. In the default `default-branch` scope it printed `updated` for every
+  successful repo, because `git merge --ff-only` and `git fetch <b>:<b>` both
+  exit 0 when nothing moved; a repo that advanced and a repo already current
+  were indistinguishable, so the mandated `X advanced, Y up-to-date` summary was
+  unobtainable. Both paths now capture the branch tip before and after and
+  derive the result from the difference. Also fixed: `dirty` repos now report
+  the promised behind-count instead of nothing; a repo with **no remote** is
+  reported as `error: no remote` rather than `diverged` (`git fetch --all` exits
+  0 with no remotes, so the old guard never fired); a branch checked out in
+  another worktree is separated from a genuinely diverged one; a missing
+  upstream in `current-branch` scope is reported rather than silently falling
+  back to the default branch; and `no default branch` is now reachable. The
+  prose result vocabulary and the script's output are now identical.
+
+### Changed
+- **`adversarial-review`** — model selection is version-free. The
+  Model Diversity Heuristic no longer names any model or version floor; it now
+  selects by *provider tier and generation* read from the runtime at request
+  time, excludes the small/fast tier by the runtime's own tier description, and
+  forbids hardcoding a version anywhere. A stale allow-list silently degraded
+  the review by excluding models that did not exist when it was written. Also
+  added a proportionality rule (do not spawn three reviewers for a trivial
+  artifact) and an output-length section, and the description now states what
+  the skill does, not only when to use it.
+- **Trigger disambiguation across the three review skills.**
+  `plan-mega-review` no longer claims the trigger `"adversarial plan review"`,
+  which collided head-on with `adversarial-review`. All three descriptions now
+  point at the other two, so a plan-critique request routes deterministically.
+- **`plan-mega-review`** — a 36-word STOP block repeated verbatim 11 times
+  (396 words) is now a single named "section STOP rule" referenced from each
+  section, and the near-duplicate "CRITICAL RULE" / "For Each Issue You Find" /
+  "Formatting Rules" sections are merged into one. Net 327 words lighter and
+  back under the 500-line guidance, with imperative density down from 7.2 to
+  2.5 per 100 lines.
+- **`plan-exit-review`** — same STOP-block and duplicate-question-section
+  deduplication; imperative density down from 7.7 to 4.0 per 100 lines.
+- **Output-length calibration** added to `plan-mega-review`,
+  `adversarial-review`, and `ado-pr-build-monitor`, which had none. Current
+  models run long by default and reasoning-effort settings do not reliably
+  shorten a visible response, so length has to be asked for explicitly.
+- **`ado-pr-build-monitor`** — the frontmatter description no longer contains an
+  angle-bracket placeholder that could be parsed as an XML tag; added a report
+  template and pinned down "required build" vs "policy evaluation" vs "gate",
+  which were used interchangeably.
+
 ### Added
 - **`adversarial-review`** — SPAR / Rubber Duck adversarial critique with
   independent reviewer contexts, a premortem pass, a review constitution,

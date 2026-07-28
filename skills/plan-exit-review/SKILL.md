@@ -1,6 +1,6 @@
 ---
 name: plan-exit-review
-description: 'Bounded, interactive engineering-readiness review of a concrete implementation plan BEFORE coding — routine features, refactors, bug fixes. Challenges scope (Step 0), then reviews architecture, code quality, tests, and performance with opinionated, recommendation-first questions. Review only — does not modify code. For an exhaustive maximum-rigor security/operations/failure-mode audit of a high-risk or cross-cutting plan, use plan-mega-review instead. Triggers: "plan exit review", "review my plan before I build", "engineering readiness review", "scope challenge", "is this plan ready to implement".'
+description: 'Bounded, interactive engineering-readiness review of a concrete implementation plan BEFORE coding — routine features, refactors, bug fixes. Challenges scope (Step 0), then reviews architecture, code quality, tests, and performance with opinionated, recommendation-first questions. Review only — does not modify code. For an exhaustive maximum-rigor security/operations/failure-mode audit of a high-risk or cross-cutting plan use plan-mega-review, and for multi-reviewer adversarial critique of an idea, decision or artifact that is not a pre-coding plan gate use adversarial-review. Triggers: "plan exit review", "review my plan before I build", "engineering readiness review", "scope challenge", "is this plan ready to implement".'
 allowed-tools:
   - Read
   - Grep
@@ -58,6 +58,13 @@ Then ask if I want one of three options:
 
 **Critical: If I do not select SCOPE REDUCTION, respect that decision fully.** Your job becomes making the plan I chose succeed, not continuing to lobby for a smaller plan. Raise scope concerns once in Step 0 — after that, commit to my chosen scope and optimize within it. Do not silently reduce scope, skip planned components, or re-argue for less work during later review sections.
 
+### The section STOP rule
+Each review section below ends with **STOP**. Applying the STOP rule means:
+raise one issue per AskUserQuestion, never batching; lead with your
+recommendation and say why; and resolve every issue in the section before
+starting the next one. The line `**STOP.** Apply the section STOP rule.` at the
+end of each section means exactly this paragraph.
+
 ### Review flow by mode (this governs how the per-section STOPs below apply)
 - **BIG CHANGE:** honor the **STOP** at the end of each section — ask, resolve, then move on. One issue per question.
 - **SMALL CHANGE:** do **not** stop after each section. Do the single combined pass, pick the one most important issue per section, and ask them together in **one round at the end** (still one recommendation + why + lettered options per issue). Treat the per-section STOP wording below as inactive in this mode.
@@ -75,7 +82,7 @@ Evaluate:
 * Whether key flows deserve ASCII diagrams in the plan or in code comments.
 * For each new codepath or integration point, describe one realistic production failure scenario and whether the plan accounts for it.
 
-**STOP.** For each issue found in this section, call AskUserQuestion individually. One issue per call. Present options, state your recommendation, explain WHY. Do NOT batch multiple issues into one AskUserQuestion. Only proceed to the next section after ALL issues in this section are resolved.
+**STOP.** Apply the section STOP rule.
 
 ### 2. Code quality review
 Evaluate:
@@ -86,14 +93,14 @@ Evaluate:
 * Areas that are over-engineered or under-engineered relative to my preferences.
 * Existing ASCII diagrams in touched files — are they still accurate after this change?
 
-**STOP.** For each issue found in this section, call AskUserQuestion individually. One issue per call. Present options, state your recommendation, explain WHY. Do NOT batch multiple issues into one AskUserQuestion. Only proceed to the next section after ALL issues in this section are resolved.
+**STOP.** Apply the section STOP rule.
 
 ### 3. Test review
 Make a diagram of all new UX, new data flow, new codepaths, and new branching if statements or outcomes. For each, note what is new about the features discussed in this plan. Then, for each new item in the diagram, make sure there is a test in the project's test framework (unit / integration / e2e as appropriate for your stack).
 
 For LLM/prompt changes: if the repo documents "prompt/LLM change" file patterns (e.g. in CLAUDE.md, AGENTS.md, GEMINI.md, or a CONTRIBUTING/eval guide), check them. If this plan touches any of those patterns, state which eval suites must be run, which cases should be added, and what baselines to compare against. Then confirm the eval scope with the user.
 
-**STOP.** For each issue found in this section, call AskUserQuestion individually. One issue per call. Present options, state your recommendation, explain WHY. Do NOT batch multiple issues into one AskUserQuestion. Only proceed to the next section after ALL issues in this section are resolved.
+**STOP.** Apply the section STOP rule.
 
 ### 4. Performance review
 Evaluate:
@@ -102,21 +109,22 @@ Evaluate:
 * Caching opportunities.
 * Slow or high-complexity code paths.
 
-**STOP.** For each issue found in this section, call AskUserQuestion individually. One issue per call. Present options, state your recommendation, explain WHY. Do NOT batch multiple issues into one AskUserQuestion. Only proceed to the next section after ALL issues in this section are resolved.
+**STOP.** Apply the section STOP rule.
 
-## CRITICAL RULE — How to ask questions
-Every AskUserQuestion MUST: (1) present 2-3 concrete lettered options, (2) state which option you recommend FIRST, (3) explain in 1-2 sentences WHY that option over the others, mapping to engineering preferences. No batching multiple issues into one question. No yes/no questions. Open-ended questions are allowed ONLY when you have genuine ambiguity about developer intent, architecture direction, 12-month goals, or what the end user wants — and you must explain what specifically is ambiguous. **Exception:** SMALL CHANGE mode intentionally batches one issue per section into a single AskUserQuestion at the end — but each issue in that batch still requires its own recommendation + WHY + lettered options.
-
-## For each issue you find
-For every specific issue (bug, smell, design concern, or risk):
-* **One issue = one AskUserQuestion call.** Never combine multiple issues into one question.
+## How to ask questions
+One issue = one AskUserQuestion call; never combine issues into one question. For every issue (bug, smell, design concern, or risk):
 * Describe the problem concretely, with file and line references when you have repo access — or the plan section plus an exact quote when reviewing a pasted plan with no repo.
-* Present 2–3 options, including "do nothing" where that's reasonable.
-* For each option, specify in one line: effort, risk, and maintenance burden.
-* **Lead with your recommendation.** State it as a directive: "Do B. Here's why:" — not "Option B might be worth considering." Be opinionated. I'm paying for your judgment, not a menu.
-* **Map the reasoning to my engineering preferences above.** One sentence connecting your recommendation to a specific preference (DRY, explicit > clever, minimal diff, etc.).
-* **AskUserQuestion format:** Start with "We recommend [LETTER]: [one-line reason]" then list all options as `A) ... B) ... C) ...`. Label with issue NUMBER + option LETTER (e.g., "3A", "3B").
-* **Escape hatch:** If a section has no issues, say so and move on. If an issue has an obvious fix with no real alternatives, state what you'll do and move on — don't waste a question on it. Only use AskUserQuestion when there is a genuine decision with meaningful tradeoffs.
+* Present 2–3 lettered options, including "do nothing" where that's reasonable, each with effort, risk, and maintenance burden in one line.
+* **Lead with your recommendation**, as a directive: "Do B. Here's why:" — not "Option B might be worth considering." Be opinionated; I'm paying for your judgment, not a menu. Connect it in one sentence to a specific engineering preference above (DRY, explicit > clever, minimal diff, etc.).
+* **Format:** open with "We recommend [LETTER]: [one-line reason]", then list options as `A) ... B) ... C) ...`, labelled with issue NUMBER + option LETTER (e.g. "3A", "3B").
+* No yes/no questions. Ask open-ended ones only where you have genuine ambiguity about developer intent, architecture direction, 12-month goals, or what the end user wants — and then name what specifically is ambiguous.
+* **Escape hatch:** if a section has no issues, say so and move on; if an issue has an obvious fix with no real alternatives, state what you'll do and move on. Ask only when there is a real decision with meaningful tradeoffs.
+* **Exception:** SMALL CHANGE mode batches one issue per section into a single question at the end — each issue in that batch still gets its own recommendation, reason, and lettered options.
+
+## Output length
+Match length to what the plan actually contains, not to the size of this
+template. A section that found nothing gets one line, not a paragraph explaining
+that it found nothing. Do not restate the plan back to me.
 
 ## Required outputs
 
