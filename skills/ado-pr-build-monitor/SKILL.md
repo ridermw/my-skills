@@ -22,7 +22,7 @@ report so the user is not left mapping three names onto one object.
 
 ## When to use
 
-- "monitor PR <url> and let me know when the PR Build is completed and a work
+- "monitor PR [url] and let me know when the PR Build is completed and a work
   item has been linked"
 - "watch the build on this PR" / "ping me when the gate is green"
 - Checking whether an ADO PR is ready to complete.

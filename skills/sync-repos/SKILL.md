@@ -79,7 +79,12 @@ such repos in the report and stop.
      safely and changes nothing if it would not be a fast-forward — but it fails
      the same way when that branch is checked out in another worktree, so read
      stderr and separate `in use by another worktree (skipped)` from
-     `diverged (needs manual merge)`. They need different fixes.
+     `diverged (needs manual merge)`. They need different fixes. Pass `--quiet`
+     and match git's specific wording (`checked out at`, `current branch`): a
+     non-quiet fetch writes its `From <path>` summary to stderr too, so a repo
+     living under a path that merely contains "worktree" would otherwise be
+     classified as a worktree collision and reported as needing no action when
+     it actually needs a manual merge.
 6. **Never** run `git reset`, `git checkout -f`, `git stash`, `git rebase`, or
    any push. Never pass `--force`.
 7. **Report** (table + one-line summary). The full result vocabulary is:
@@ -147,13 +152,13 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
     # Order matters: 2>&1 then 1>/dev/null keeps stderr (needed below to tell a
     # worktree collision from a real divergence) and drops stdout. Reversing it
     # to `1>/dev/null 2>&1` sends stderr to /dev/null and empties $err.
-    if err="$(git -C "$repo" fetch origin "$def:$def" 2>&1 1>/dev/null)"; then
+    if err="$(git -C "$repo" fetch --quiet origin "$def:$def" 2>&1 1>/dev/null)"; then
       after="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$def")"
       if   [ -z "$before" ];         then r "$name" "$def" "created local $def (on $cur)"
       elif [ "$before" = "$after" ]; then r "$name" "$def" "up-to-date (on $cur)"
       else r "$name" "$def" "advanced $(git -C "$repo" rev-list --count "$before..$after") commits (on $cur)"; fi
     else
-      case "$err" in *"checked out"*|*"in use"*|*worktree*) r "$name" "$def" "in use by another worktree (skipped)";;
+      case "$err" in *"checked out at"*|*"current branch"*) r "$name" "$def" "in use by another worktree (skipped)";;
                      *) r "$name" "$def" "diverged (needs manual merge)";; esac
     fi
   fi
