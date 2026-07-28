@@ -39,11 +39,15 @@ such repos in the report and stop.
 
 ## Procedure
 
-1. **Discover clones.** Find top-level git repos under `root` (depth 1–2, do not
-   recurse into a repo's own subdirs). A directory is a clone if it contains a
-   `.git` **directory**; linked worktrees and submodules, where `.git` is a file,
-   are skipped (see Edge cases). Prune `node_modules` explicitly — a depth cap
-   alone still matches `<root>/node_modules/.git`.
+1. **Discover clones.** A clone is `root` itself, or a direct child of `root`,
+   that contains a `.git` **directory** — nothing deeper is scanned. Linked
+   worktrees and submodules, where `.git` is a file, are skipped (see Edge
+   cases), and `node_modules` is pruned explicitly because a depth cap alone
+   still matches `<root>/node_modules/.git`. Pointing at a single clone
+   therefore syncs that clone; pointing at a folder of clones syncs each of
+   them. If `root` is itself a clone *and* holds nested clones, both levels are
+   in scope and every one of them appears in the report — nothing is updated
+   invisibly, and every update is still fast-forward-only.
 2. **Confirm an `origin` remote exists**, then **fetch:**
    `git fetch --all --prune --quiet`. The rest of this procedure resolves the
    default branch and pushes/pulls through `origin` specifically, so check

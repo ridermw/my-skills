@@ -59,11 +59,13 @@ Then ask if I want one of three options:
 **Critical: If I do not select SCOPE REDUCTION, respect that decision fully.** Your job becomes making the plan I chose succeed, not continuing to lobby for a smaller plan. Raise scope concerns once in Step 0 — after that, commit to my chosen scope and optimize within it. Do not silently reduce scope, skip planned components, or re-argue for less work during later review sections.
 
 ### The section STOP rule
-Each review section below ends with **STOP**. Applying the STOP rule means:
-raise one issue per AskUserQuestion, never batching; lead with your
-recommendation and say why; and resolve every issue in the section before
-starting the next one. The line `**STOP.** Apply the section STOP rule.` at the
-end of each section means exactly this paragraph.
+Each review section below ends with **STOP**, written as `**STOP.** Apply the
+section STOP rule.` Applying it means: raise one issue per AskUserQuestion,
+never batching; lead with your recommendation and say why. **When you stop is
+set by the mode below** — BIG CHANGE resolves every issue in a section before
+starting the next, while SMALL CHANGE defers all of them to a single round at
+the end. The mode governs; this paragraph only defines what a STOP does once you
+reach one.
 
 ### Review flow by mode (this governs how the per-section STOPs below apply)
 - **BIG CHANGE:** honor the **STOP** at the end of each section — ask, resolve, then move on. One issue per question.

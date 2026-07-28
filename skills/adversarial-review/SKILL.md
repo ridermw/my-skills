@@ -62,7 +62,11 @@ rank it.
 Selection rules:
 
 1. **Enumerate, then rank.** Ask the runtime which models it exposes and group
-   them by provider. Do not assume any particular provider or model exists.
+   them by provider. Do not assume any particular provider or model exists. If
+   the runtime exposes no model list or no provider metadata, tier selection is
+   not possible — do not guess a lineup from memory. Say so, run the independent
+   reviewers you can as `parallel-subagents`, and disclose
+   `model diversity not confirmed`.
 2. **One reviewer per provider, three providers.** Independence comes from
    different providers, not from three variants of one family.
 3. **Take each provider's frontier general-reasoning tier** — the tier that
