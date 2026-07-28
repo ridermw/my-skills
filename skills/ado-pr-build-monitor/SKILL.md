@@ -1,6 +1,6 @@
 ---
 name: ado-pr-build-monitor
-description: 'Use when the user wants to monitor or watch an Azure DevOps (ADO) pull request build to completion — "monitor PR <url> and let me know when the build completes", "watch this PR build", "tell me when the PR build passes and a work item is linked", "is the PR gate green yet", ADO PR build/policy/gate status polling. Read-only; reports status, does not post comments or complete the PR.'
+description: 'Use when the user wants to monitor or watch an Azure DevOps (ADO) pull request build to completion — "monitor PR [url] and let me know when the build completes", "watch this PR build", "tell me when the PR build passes and a work item is linked", "is the PR gate green yet", ADO PR build/policy/gate status polling. Read-only; reports status, does not post comments or complete the PR.'
 ---
 
 # ADO PR Build Monitor
@@ -15,9 +15,14 @@ or create work items. If the user also wants a code review or PR write-backs,
 that belongs to a separate code-review skill — keep this one focused on
 "watch and report."
 
+Throughout, a **required build** is a build the PR's branch policy requires. The
+ADO API exposes these as *policy evaluations* that point at a *pipeline run*;
+"gate" is used loosely for the same thing. Prefer "required build" in your
+report so the user is not left mapping three names onto one object.
+
 ## When to use
 
-- "monitor PR <url> and let me know when the PR Build is completed and a work
+- "monitor PR [url] and let me know when the PR Build is completed and a work
   item has been linked"
 - "watch the build on this PR" / "ping me when the gate is green"
 - Checking whether an ADO PR is ready to complete.
@@ -98,13 +103,27 @@ build status.
      the remaining blocker. Poll a short while longer for the link if the user
      asked to be told "when both are done," else report and stop.
    - **Timeout:** report the last known status of every gate and stop.
-6. **Report:**
-   - PR title + link, and whether the change still matches its stated goal at a
-     glance.
-   - Each required build: result, duration, link.
-   - Linked work item(s), or "none linked yet".
-   - One-line **next action** (e.g. "ready to complete", "link a work item",
-     "fix failing stage X — see errors above").
+6. **Report** using this shape:
+
+   ```
+   PR <id>: <title>  <link>
+   Required builds:
+     <name>  <result>  <duration>  <link>
+   Work items: <id> <title>   (or: none linked yet)
+   Next action: <one line>
+   ```
+
+   Note whether the change still matches its stated goal at a glance. On a
+   failure, add the failing stage/job and the root-cause lines beneath the build
+   row.
+
+## Output length
+
+Report the outcome, not the journey. While polling, stay quiet — one line when
+you start and one line if you pause is enough; do not narrate each poll or each
+unchanged status. The final report is the shape above and nothing more: no
+restated PR description, no full log dump beyond the root-cause lines, no
+closing summary of what you just said.
 
 ## Long builds — don't block the session
 

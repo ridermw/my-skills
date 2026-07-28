@@ -39,29 +39,69 @@ such repos in the report and stop.
 
 ## Procedure
 
-1. **Discover clones.** Find top-level git repos under `root` (depth 1–2, do not
-   recurse into a repo's own subdirs or `node_modules`). A directory is a clone
-   if it contains a `.git` entry.
-2. **Per repo, gather state first (no network):** current branch, dirty flag
-   (`git status --porcelain`), and the default branch
-   (`git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, falling back to
-   `main`/`master`).
-3. **Fetch:** `git fetch --all --prune --quiet`. If it fails (no remote, auth,
-   network), record `error: <reason>` and continue to the next repo.
-4. **Fast-forward safely:**
-   - If the working tree is **dirty** → do not pull. Record `dirty (skipped)`.
-     Still report ahead/behind counts so the user knows if it is stale.
-   - `scope=current-branch`: if the current branch has an upstream and is clean,
-     `git merge --ff-only @{u}`. If it is not a fast-forward, record
-     `diverged (needs manual merge)` and leave it alone.
-   - `scope=default-branch`: update the default branch without checkout when it
-     is not the current branch, using
-     `git fetch origin <default>:<default>` (this fails safely and does nothing
-     if it would not be a fast-forward — record `diverged` in that case). If the
-     default branch **is** the current branch and clean, use `git merge --ff-only`.
-5. **Never** run `git reset`, `git checkout -f`, `git stash`, `git rebase`, or
+1. **Discover clones.** A clone is `root` itself, or a direct child of `root`,
+   that contains a `.git` **directory** — nothing deeper is scanned. Linked
+   worktrees and submodules, where `.git` is a file, are skipped (see Edge
+   cases), and `node_modules` is pruned explicitly because a depth cap alone
+   still matches `<root>/node_modules/.git`. Pointing at a single clone
+   therefore syncs that clone; pointing at a folder of clones syncs each of
+   them. If `root` is itself a clone *and* holds nested clones, both levels are
+   in scope and every one of them appears in the report — nothing is updated
+   invisibly, and every update is still fast-forward-only.
+2. **Confirm an `origin` remote exists**, then **fetch what this run actually
+   needs — not every remote.** Everything here resolves through `origin`, so
+   check `git remote get-url origin`: a clone whose remote is named `upstream`
+   would otherwise pass a bare "some remote exists" guard and then be
+   misreported as `no default branch`. Then `git fetch --prune --quiet origin`,
+   plus the current branch's own tracking remote when that is not `origin` (a
+   fork layout) — `@{u}` drives both the behind-count and the `current-branch`
+   merge, so skipping it would report a branch as up-to-date while it is behind.
+   Do **not** use `fetch --all`: it exits non-zero when *any* remote fails, so a
+   single unrelated broken remote would mark a perfectly healthy repo
+   `error: fetch failed`. Record `error: no origin remote` when `origin` is
+   missing, and `error: fetch failed` when a remote this run genuinely needs is
+   unreachable.
+3. **Resolve the default branch** from
+   `git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, falling back to
+   `refs/remotes/origin/main` then `refs/remotes/origin/master`. If none exists,
+   record `no default branch` and skip. Resolve this *after* fetching so a stale
+   or absent `origin/HEAD` is refreshed first.
+4. **Read local state (no network):** current branch and dirty flag
+   (`git status --porcelain`).
+5. **Fast-forward safely.** Every result must be distinguishable — always capture
+   the branch tip **before** and **after** the operation and derive the result
+   from the difference. Never report success on exit code alone: `merge --ff-only`
+   and `fetch <b>:<b>` both exit 0 when nothing moved, so an exit-code-only check
+   cannot tell `advanced` from `up-to-date`.
+   - **Dirty** working tree → do not pull. Record `dirty (skipped), N behind`,
+     counting with `git rev-list --count HEAD..@{u}` (or `..origin/<default>`
+     when there is no upstream) so the user knows how stale it is.
+   - `scope=current-branch`: if the current branch has no upstream, record
+     `no upstream (skipped)` — do **not** silently fall back to the default
+     branch. Otherwise `git merge --ff-only @{u}`; if that fails, record
+     `diverged (needs manual merge)`.
+   - `scope=default-branch`, default branch **is** checked out:
+     `git merge --ff-only origin/<default>`.
+   - `scope=default-branch`, default branch **is not** checked out: update it
+     without checkout via `git fetch origin <default>:<default>`. This fails
+     safely and changes nothing if it would not be a fast-forward — but it fails
+     the same way when that branch is checked out in another worktree, so read
+     stderr and separate `in use by another worktree (skipped)` from
+     `diverged (needs manual merge)`. They need different fixes. Pass `--quiet`
+     and match git's specific wording (`checked out at`, `current branch`): a
+     non-quiet fetch writes its `From <path>` summary to stderr too, so a repo
+     living under a path that merely contains "worktree" would otherwise be
+     classified as a worktree collision and reported as needing no action when
+     it actually needs a manual merge.
+6. **Never** run `git reset`, `git checkout -f`, `git stash`, `git rebase`, or
    any push. Never pass `--force`.
-6. **Report** (table + one-line summary):
+7. **Report** (table + one-line summary). The full result vocabulary is:
+   `advanced N commits` · `up-to-date` · `created local <default>` ·
+   `dirty (skipped), N behind` · `diverged (needs manual merge)` ·
+   `in use by another worktree (skipped)` · `detached (skipped)` ·
+   `no upstream (skipped)` · `no default branch` · `error: <reason>`.
+   When the default branch was updated while another branch is checked out,
+   suffix `(on <current>)`.
 
    | repo | branch | result |
    |------|--------|--------|
@@ -69,9 +109,9 @@ such repos in the report and stop.
    | web-client | feature/x | dirty (skipped), 2 behind |
    | shared-lib | main | up-to-date |
    | infra-tools | main | diverged (needs manual merge) |
-   | legacy-svc | main | error: auth failed |
+   | legacy-svc | main | error: fetch failed |
 
-   End with: `N repos: X advanced, Y up-to-date, Z skipped-dirty, W diverged, V errors.`
+   End with: `N repos: X advanced, Y up-to-date, Z skipped, W diverged, V errors.`
    List the diverged/error/dirty repos again as an explicit "needs attention"
    line so nothing important scrolls off.
 
@@ -81,28 +121,60 @@ Adapt the root as needed. This is read-only except for fetch + ff-only.
 
 ```bash
 ROOT="${1:-$PWD}"; SCOPE="${2:-default-branch}"
-# Never block on a credential prompt — a single private repo must not hang the run.
+# Never block on a credential prompt — one private repo must not hang the run.
 export GIT_TERMINAL_PROMPT=0
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
-find "$ROOT" -maxdepth 2 -name .git -type d 2>/dev/null | while read -r g; do
+r() { printf '%s\t%s\t%s\n' "$1" "$2" "$3"; }
+find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 2>/dev/null | while read -r g; do
   repo="$(dirname "$g")"; name="$(basename "$repo")"
   cur="$(git -C "$repo" branch --show-current 2>/dev/null)"
-  [ -z "$cur" ] && { printf '%s\t%s\t%s\n' "$name" "detached" "detached (skipped)"; continue; }
+  [ -z "$cur" ] && { r "$name" "detached" "detached (skipped)"; continue; }
+  git -C "$repo" remote get-url origin >/dev/null 2>&1 || { r "$name" "$cur" "error: no origin remote"; continue; }
+  git -C "$repo" fetch --prune --quiet origin 2>/dev/null || { r "$name" "$cur" "error: fetch failed"; continue; }
+  # Also refresh the branch's own tracking remote when it isn't origin (fork
+  # layouts), since @{u} drives the behind-count and the current-branch merge.
+  # Any other remote is irrelevant here — fetching it could only fail the run.
+  upr="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; upr="${upr%%/*}"
+  if [ -n "$upr" ] && [ "$upr" != origin ]; then
+    git -C "$repo" fetch --prune --quiet "$upr" 2>/dev/null || { r "$name" "$cur" "error: fetch failed ($upr)"; continue; }
+  fi
   def="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-  [ -z "$def" ] && def="$(git -C "$repo" show-ref --verify --quiet refs/heads/main && echo main || echo master)"
+  for b in main master; do
+    [ -n "$def" ] && break
+    git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$b" && def="$b"
+  done
+  [ -z "$def" ] && { r "$name" "$cur" "no default branch"; continue; }
   dirty="$(git -C "$repo" status --porcelain 2>/dev/null | head -1)"
-  git -C "$repo" fetch --all --prune --quiet 2>/dev/null || { echo "$name	$cur	error: fetch failed"; continue; }
-  if [ -n "$dirty" ]; then echo "$name	$cur	dirty (skipped)"; continue; fi
-  if [ "$SCOPE" = "current-branch" ] && git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
-    before="$(git -C "$repo" rev-parse HEAD)"
-    git -C "$repo" merge --ff-only @{u} --quiet 2>/dev/null \
-      && { after="$(git -C "$repo" rev-parse HEAD)"; [ "$before" = "$after" ] && echo "$name	$cur	up-to-date" || echo "$name	$cur	advanced"; } \
-      || echo "$name	$cur	diverged (needs manual merge)"
+  if [ -n "$dirty" ]; then
+    ref="origin/$def"; git -C "$repo" rev-parse --verify --quiet '@{u}' >/dev/null 2>&1 && ref='@{u}'
+    r "$name" "$cur" "dirty (skipped), $(git -C "$repo" rev-list --count "HEAD..$ref" 2>/dev/null || echo '?') behind"; continue
+  fi
+  if [ "$SCOPE" = "current-branch" ]; then
+    git -C "$repo" rev-parse --verify --quiet '@{u}' >/dev/null 2>&1 || { r "$name" "$cur" "no upstream (skipped)"; continue; }
+    target="$cur"; upstream='@{u}'
   else
-    if [ "$cur" = "$def" ]; then
-      git -C "$repo" merge --ff-only "origin/$def" --quiet 2>/dev/null && echo "$name	$def	updated" || echo "$name	$def	diverged (needs manual merge)"
+    target="$def"; upstream="origin/$def"
+  fi
+  if [ "$target" = "$cur" ]; then                       # update in place, ff-only
+    before="$(git -C "$repo" rev-parse HEAD)"
+    if git -C "$repo" merge --ff-only "$upstream" --quiet 2>/dev/null; then
+      after="$(git -C "$repo" rev-parse HEAD)"
+      [ "$before" = "$after" ] && r "$name" "$target" "up-to-date" \
+        || r "$name" "$target" "advanced $(git -C "$repo" rev-list --count "$before..$after") commits"
+    else r "$name" "$target" "diverged (needs manual merge)"; fi
+  else                                                   # update default branch without checkout
+    before="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$def")"
+    # Order matters: 2>&1 then 1>/dev/null keeps stderr (needed below to tell a
+    # worktree collision from a real divergence) and drops stdout. Reversing it
+    # to `1>/dev/null 2>&1` sends stderr to /dev/null and empties $err.
+    if err="$(git -C "$repo" fetch --quiet origin "$def:$def" 2>&1 1>/dev/null)"; then
+      after="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$def")"
+      if   [ -z "$before" ];         then r "$name" "$def" "created local $def (on $cur)"
+      elif [ "$before" = "$after" ]; then r "$name" "$def" "up-to-date (on $cur)"
+      else r "$name" "$def" "advanced $(git -C "$repo" rev-list --count "$before..$after") commits (on $cur)"; fi
     else
-      git -C "$repo" fetch origin "$def:$def" --quiet 2>/dev/null && echo "$name	$def	default updated (on $cur)" || echo "$name	$def	diverged or in-use"
+      case "$err" in *"checked out at"*|*"current branch"*) r "$name" "$def" "in use by another worktree (skipped)";;
+                     *) r "$name" "$def" "diverged (needs manual merge)";; esac
     fi
   fi
 done
@@ -114,11 +186,27 @@ summarize; do not narrate each repo.
 
 ## Edge cases
 
-- **Worktrees / submodules:** skip nested `.git` inside a repo; treat only
-  top-level clones. Do not auto-update submodules unless asked.
-- **No `origin/HEAD`:** fall back to `main` then `master`; if neither exists,
-  report `no default branch`.
+- **Worktrees / submodules:** discovery matches only a `.git` **directory**, so
+  linked worktrees and submodules (where `.git` is a file) are skipped by
+  construction. Do not auto-update submodules unless asked.
+- **Branch checked out elsewhere:** `fetch <b>:<b>` refuses when the branch is
+  checked out in another worktree, with the same non-zero exit as a non-fast-
+  forward. Report `in use by another worktree (skipped)`, not `diverged` — the
+  first needs no action, the second needs a manual merge.
+- **No `origin` remote:** everything here resolves through `origin`, so a repo
+  whose only remote is named something else (`upstream` on a fork, a renamed
+  remote) must be reported, not silently misread as `no default branch`. Guard
+  with `git remote get-url origin`. Report `error: no origin remote`.
+- **Several remotes:** fetch only `origin` and the current branch's tracking
+  remote. `fetch --all` couples the run's success to remotes it never reads —
+  one broken remote fails the whole fetch and the repo is reported as
+  `error: fetch failed` while `origin` is perfectly healthy.
+- **No `origin/HEAD`:** fall back to `origin/main` then `origin/master`; if
+  neither exists, report `no default branch`.
 - **Detached HEAD:** report `detached (skipped)`, never fast-forward.
+- **No upstream (current-branch scope):** report `no upstream (skipped)` rather
+  than quietly switching to the default branch — a silent scope change is worse
+  than a skip.
 - **Auth prompts:** if a fetch would block on credentials, record it as an error
   and move on — never hang the whole run on one repo.
 - **Large trees:** cap discovery depth at 2; if the user points at a huge root,

@@ -1,6 +1,6 @@
 ---
 name: adversarial-review
-description: Use when pressure-testing ideas, plans, architecture, code changes, tradeoffs, proposals, risky decisions, suspected bugs, implementation approaches, or critique requests
+description: 'Pressure-tests an idea, plan, or change by running separated adversarial reviewer perspectives rather than a generic pros/cons list, then synthesizes consensus-ranked findings with severity, confidence and cited evidence. SPAR mode debates a decision through roles with conflicting incentives; Rubber Duck mode runs independent critique reviewers over an artifact and ranks what they agree on. Always discloses the execution path it actually achieved and never claims reviewers or model diversity it did not. Use when the user asks to pressure-test, stress-test, poke holes in, red-team or critique an idea, proposal, strategy, architecture tradeoff, code change, test plan, debugging hypothesis, suspected bug or risky decision. For a bounded pre-coding readiness gate on a concrete implementation plan use plan-exit-review, and for a maximum-rigor audit of a high-risk plan use plan-mega-review; this skill is adversarial critique of any artifact or decision, not a plan-approval workflow.'
 ---
 
 # Adversarial Review
@@ -31,29 +31,65 @@ Before substantive content, determine this once and reuse it:
 | One critique/generic subagent available | `single-subagent` |
 | No subagent tool available | `single-agent` |
 
-Target exactly three independent reviewer contexts whenever possible. If three distinct model-backed subagents cannot be launched, degrade gracefully to the best available independent contexts and disclose the downgrade.
+For a substantive artifact, target exactly three independent reviewer contexts whenever possible; see Proportionality below for when a smaller artifact does not warrant three. If three distinct model-backed subagents cannot be launched, degrade gracefully to the best available independent contexts and disclose the downgrade.
+
+**Proportionality.** Three reviewers are for a substantive artifact — a plan, a
+design, a diff, a decision with real consequences. For a single function, a
+one-line question, or a change you could fully critique yourself in a couple of
+steps, run `single-agent`, say so, and skip the subagent overhead. Do not spawn
+reviewers whose combined cost exceeds the value of the critique.
+
+## Output length
+
+Match length to the findings, not to the section list. Report every section the
+mode calls for, but collapse an empty one to a single line instead of padding
+it. Lead with the highest-priority finding. Do not restate the artifact back to
+the user, and do not repeat the same finding in full in both the
+consensus-ranked list and the recommended-changes list — cross-reference it.
 
 ## Model Diversity Heuristic
 
-Use three independent reviewers across three provider families. The only eligible families and models are:
+The goal is three independent, high-effort reasoning contexts from three
+*different* model providers. Select by **tier and generation, never by version
+number.** This skill deliberately names no model: any name hardcoded here is
+wrong the moment the runtime updates, and a stale allow-list silently degrades
+the review by excluding models that did not exist when it was written.
 
-- **OpenAI** — GPT-5.5 or newer only (exclude GPT-5.4 and older, and any `mini` variant).
-- **Anthropic** — Opus models only (exclude Sonnet and Haiku).
-- **Gemini** — Pro models only (exclude Flash).
+**Never hardcode a model version — not in this file, and not in your selection
+reasoning.** Enumerate what the runtime actually exposes at request time, then
+rank it.
 
-Do not use any other provider family (no MAI or others) and do not use any model below these floors, even if the runtime exposes it.
+Selection rules:
 
-Selection order:
-
-1. One reviewer per eligible family: the runtime's Opus model, its GPT-5.5+ model, and its Gemini Pro model.
-2. If a family exposes several eligible models, pick the strongest general-reasoning one.
-3. Reasoning effort: set each reviewer to the highest level it supports, in the order **Max > Extra High (xhigh) > High**. In practice: Opus → Max, GPT-5.5+ → Extra High, Gemini Pro → High. Never set a reviewer below High.
-4. For implementation-heavy code review, a reviewer may use a code-specialized model only if it still meets a family floor above; otherwise keep general-reasoning models.
-5. Do not assume a specific model version exists or fabricate one. Use only models the runtime actually exposes that also meet the floors above.
-6. If an eligible family or model is not exposed, do not substitute a disallowed family/model. Run the reviewers you can, reduce the reviewer count, and disclose the downgrade and `model diversity not confirmed`.
-7. If model override is unavailable or provider family is unclear, still launch independent subagents and disclose `model diversity not confirmed`.
-
-The goal is three independent, high-effort reasoning contexts from OpenAI, Anthropic, and Gemini — not a fixed model-version lineup.
+1. **Enumerate, then rank.** Ask the runtime which models it exposes and group
+   them by provider. Do not assume any particular provider or model exists. If
+   the runtime exposes no model list or no provider metadata, tier selection is
+   not possible — do not guess a lineup from memory. Say so, run the independent
+   reviewers you can as `parallel-subagents`, and disclose
+   `model diversity not confirmed`.
+2. **One reviewer per provider, three providers.** Independence comes from
+   different providers, not from three variants of one family.
+3. **Take each provider's frontier general-reasoning tier** — the tier that
+   provider positions for its hardest reasoning and agentic work — and the
+   newest generation of that tier.
+4. **Exclude the small/fast tier.** Skip anything the runtime labels or markets
+   as mini, small, flash, lite, nano, turbo, instant, fast, cheap, or
+   economical, and any model presented as the lightweight sibling of a larger
+   one. Judge by the runtime's own tier description at request time, not by a
+   remembered list of names — tier labels change.
+5. **Reasoning effort: the highest each reviewer supports.** Read the effort
+   levels the runtime offers and take the top rung, whatever it is called. Never
+   set a reviewer below the runtime's "high" equivalent. If effort is not
+   controllable, say so rather than implying it was set.
+6. **Code review:** a code-specialized model may hold a reviewer slot only if it
+   is that provider's frontier tier; otherwise keep general-reasoning models.
+7. **Never fabricate.** If a provider, model, or effort level is not actually
+   exposed, do not invent it and do not substitute a small-tier model to fill a
+   slot. Run the reviewers you can, reduce the count, and disclose
+   `model diversity not confirmed`.
+8. **Fewer than three providers is a downgrade to disclose, not a reason to
+   lower the tier bar.** Two frontier reviewers beat three where one is a
+   small-tier stand-in.
 
 ## Degeneration-of-Thought Safeguard
 
@@ -234,7 +270,7 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 - No slash commands: invoke by name, e.g. "Use adversarial-review on..."
 - Unknown CLI or no skill loader: paste or include this `SKILL.md` at conversation start and say, "Use the adversarial-review skill from this file on my next request."
 - Skill not loading: if the assistant does not mention `adversarial-review` or choose SPAR/Rubber Duck mode, assume the file was not loaded.
-- No model override: run three independent subagents if possible and disclose `model diversity not confirmed`; never substitute a disallowed family or model to fill a slot.
+- No model override: run three independent subagents if possible and disclose `model diversity not confirmed`; never substitute a small-tier model to fill a slot.
 - No three-subagent support: run the available critique subagent count and disclose the downgrade.
 - No `rubber-duck` agent: use generic critique subagents.
 - No subagents: simulate separated perspectives sequentially and disclose that limitation.
@@ -250,6 +286,8 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 | Style feedback | Prioritize defects, risks, assumptions, evidence, and tests |
 | Counting yourself as a reviewer | Consensus counts only independent reviewer contexts |
 | Claiming model diversity without model control | Say `model diversity not confirmed` |
+| Naming a specific model version | Select by provider tier and generation from what the runtime exposes now |
+| Filling a reviewer slot with a small/fast model | Reduce the reviewer count instead and disclose it |
 | Dropping single-reviewer critical findings | Keep serious single-reviewer findings separately |
 | Letting reviewers influence each other | Give each reviewer the same target but not other reviewers' findings during first pass |
 | Treating consensus as proof | Consensus is a prioritization signal, not a guarantee |
