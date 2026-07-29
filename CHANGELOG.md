@@ -44,6 +44,30 @@ All notable changes to the skills in this repo.
   prose result vocabulary and the script's output are now identical.
 
 ### Changed
+- **`project-room`** — the review checkpoint is now a **named gate** referenced
+  from the five places that used to restate it, following the same deduplication
+  applied to `plan-mega-review` and `plan-exit-review`. Paired with dropping a
+  menu-shape example that duplicated the picker spec and the shell snippet above
+  it, this paid for the publication gate and Step 7: the file is 500 lines, at
+  the guidance rather than past it.
+- **`project-room`** — principle 8 now covers **room-generated files**, not only
+  sources. Step 1 reads the working brief and the primary output first, so a
+  prior render is re-ingested every session; it is data, not instruction, and may
+  carry a claim that was never true.
+- **`project-room`** — "moving a file edits every claim that addresses it by
+  name" is now stated in Safety & scope, with the reference sweep required in the
+  same pass as the move. Cross-references are written as bare filenames in prose,
+  so a relocation silently repoints every document that named one — reorganizing
+  is provenance editing. Reported in #3.
+- **`project-room`** — Refresh sub-step 9 is a **hard trigger**: a request for a
+  deliverable other than `room.yaml: deliverable` stops and recommends a new
+  room. The Intent section now states the boundary directly — a room is a unit of
+  work, not a filing cabinet. This replaces the proposed `room_kind: program`
+  mode, which would have legitimized the anti-pattern rather than caught it.
+- **`project-room`** — the README `## Status snapshot` and the working brief now
+  have an explicit authority split: the brief owns the evidence view, the README
+  owns the state view (done / next / blocked) and remains the one surface that
+  says which dated document is live. Reported in #2.
 - **`adversarial-review`** — model selection is version-free. The
   Model Diversity Heuristic no longer names any model or version floor; it now
   selects by *provider tier and generation* read from the runtime at request
@@ -75,6 +99,27 @@ All notable changes to the skills in this repo.
   which were used interchangeably.
 
 ### Added
+- **`project-room`** — a **publication gate** at the end of Step 4. The skill had
+  exactly one mandatory STOP, before drafting, but the failure it was meant to
+  prevent happens *after* that: a room-written document reaching a reader with a
+  delivery claim nothing ever checked. The gate names the audience (a document
+  addressed beyond the requester needs explicit human sign-off), enumerates
+  delivery-state assertions **in the room's own voice** while leaving attributed
+  source claims alone, requires a logged grep pass alongside the enumeration
+  because neither catches what the other misses, and requires a human-confirmed
+  artifact for every surviving claim — *presence of an identifier is not proof*,
+  and principle 8 means the agent cannot verify one itself. Unconfirmed claims
+  are rewritten as `planned` / `targeted` / `[⚠️ UNVERIFIED]`, never deleted, and
+  the agent never marks a document verified on its own authority. Reported in #3.
+- **`project-room`** — **Step 7, Archive superseded outputs.** Every other
+  operation adds files and the skill forbids removal, so superseded drafts
+  accumulated beside current ones with no way to tell which was live. Excluding
+  `05_outputs/` from the inventory (#4) removed the hazard that made this
+  unsafe — outputs no longer carry inventory `Path` cells, so archiving them
+  cannot dangle a source reference or falsify a history snapshot. The human names
+  the set, the move plan is written to `change_log.md` *before* anything moves so
+  an interrupted run is resumable, and sources are never archived this way.
+  Requested in #2.
 - **`adversarial-review`** — SPAR / Rubber Duck adversarial critique with
   independent reviewer contexts, a premortem pass, a review constitution,
   consensus-ranked findings with evidence standards, and mandatory disclosure of
