@@ -5,6 +5,28 @@ All notable changes to the skills in this repo.
 ## [Unreleased]
 
 ### Fixed
+- **`project-room`** — a room-written output could be cited as evidence for a
+  fact the room never observed. `05_outputs/` was the one generated directory
+  missing from the inventory's exclusion list, so a room-authored document could
+  be given a Source ID and an `authoritative` Authority value — the same tier as
+  a direct measurement. The conflict pass cannot catch this: it compares
+  *sources* against each other, and a claim inside a generated output is not a
+  source claim. `05_outputs/` is now excluded alongside the other room artifacts,
+  with the rule stated plainly — **renders are not sources**. Reported in #3.
+- **`project-room`** — `review_status` never reached the surface a reader
+  actually orients from. Step 1 reads `README.md` first, but `review_status`
+  lived only in `room.yaml`, so a room whose approval had just been invalidated
+  by a Refresh looked identical to an approved one. The README now carries a
+  `Review status` mirror, and principle 5 and Refresh sub-step 8 keep both
+  copies in sync.
+- **`project-room`** — nothing ever asked whether the README `## Status
+  snapshot` was still true. The Index STOP prompt enumerated counts, duplicates,
+  and conflicts but never the room's headline status, and Refresh moved
+  `last_refreshed` without re-checking the content underneath it — a fresh date
+  over stale content is worse than an obviously old file, because the date is
+  the reader's staleness signal and it lies. Both operations now check the
+  snapshot and propose corrections for the human rather than editing it
+  silently. Reported in #2.
 - **`sync-repos`** — the reference script could not produce its own documented
   report. In the default `default-branch` scope it printed `updated` for every
   successful repo, because `git merge --ff-only` and `git fetch <b>:<b>` both

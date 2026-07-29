@@ -72,7 +72,9 @@ Hold this intent above convenience:
 4. **Snapshot before a refresh:** copy current maintenance state into a fresh
    `99_review/history/<YYYY-MM-DD>[-N]-pre-refresh/` (add `-2`/`-3` if one already
    exists that day) before editing it.
-5. **Bump `last_refreshed` in BOTH `room.yaml` and `README.md`** on any state change.
+5. **Bump `last_refreshed` and mirror `review_status` in BOTH `room.yaml` and
+   `README.md`** on any state change — the README is the surface a reader
+   orients from, so an invalidated room must not look approved there.
 6. **Preparation ≠ drafting.** Never write the final deliverable until the human
    has reviewed the inventory and `room.yaml` shows `review_status: clean`.
 7. **Sensitive/confidential sources are metadata-only.** Do not open, copy, or
@@ -99,8 +101,8 @@ with `01_inbox`, `02_inventory`, `03_source_summaries`, `04_working_brief`,
 
 | Path | Purpose |
 |---|---|
-| `room.yaml` | Manifest: `project`, `status`, `note`, `last_refreshed`, optional `deliverable`, `id_prefix`, `source_paths`, `maintenance_links` |
-| `README.md` | Human overview + **status snapshot** + maintenance links |
+| `room.yaml` | Manifest: `project`, `status`, `review_status`, `note`, `last_refreshed`, optional `deliverable`, `id_prefix`, `source_paths`, `maintenance_links` |
+| `README.md` | Human overview + **status snapshot** + `Review status` mirror + maintenance links |
 | `00_originals/` | Copies of source files (never mutated). Has its own `README.md` index. |
 | `01_inbox/` | New / unclear-relevance material awaiting triage |
 | `02_inventory/` | `source_inventory.md` (13-col table) + `source_inventory.csv` |
@@ -127,8 +129,10 @@ Change,Source ID,Path,File name,Source type,Date,Owner,Relevance,Authority,Curre
   supporting | background | superseded | unknown. **Current or superseded**:
   current | likely superseded | unknown — always give brief reasoning.
 - Maintenance files (`02_inventory/`, `03_source_summaries/`, `04_working_brief/`,
-  `99_review/`) are **excluded** from the inventory — they are room artifacts,
-  not sources.
+  `99_review/`) **and the room's own outputs (`05_outputs/`)** are **excluded**
+  from the inventory — they are room artifacts, not sources. **Renders are not
+  sources:** a document the room wrote never gets a Source ID or an Authority
+  value, and is never cited as evidence for a fact the room did not observe.
 
 ## Step 0 — Resolve the base folder and room
 
@@ -288,12 +292,14 @@ produce the summary tier.
    (referenced-but-absent sources, unsupported claims, numbers without stated
    assumptions, decisions with no owner). Never resolve silently.
 9. Update `00_originals/README.md` index if you added originals.
-10. **STOP for review.** Set `review_status: needs_review` in `room.yaml`, then
-    present a summary (files scanned, high/med/low counts, duplicates/version
-    families, conflicts/missing items, top 3–5 items needing review) and ask:
-    "Review the inventory and working brief; tell me what to correct before I
-    draft anything." Do not draft here. Only when the human approves do you set
-    `review_status: clean`.
+10. **STOP for review.** Set `review_status: needs_review` in `room.yaml` and in
+    the README, then present a summary (files scanned, high/med/low counts,
+    duplicates/version families, conflicts/missing items, top 3–5 items needing
+    review), **state whether anything just indexed contradicts the README
+    `## Status snapshot`** (if it does, say which line and propose the
+    correction — do not edit it silently), and ask: "Review the inventory and
+    working brief; tell me what to correct before I draft anything." Do not
+    draft here. Only when the human approves do you set `review_status: clean`.
 
 ## Working brief
 
@@ -352,7 +358,10 @@ Use when sources changed materially or before a new drafting pass.
    guidance rather than deleting it.
 7. Write a dated `change_log.md` section and regenerate `prep_summary.json`.
 8. Bump `last_refreshed` in `room.yaml` **and** README, and set
-   `review_status: needs_review` (a refresh invalidates prior approval).
+   `review_status: needs_review` **in both** (a refresh invalidates prior
+   approval). Re-check the README `## Status snapshot` against what changed and
+   propose corrections rather than only moving the date — a fresh date over
+   stale content is worse than an obviously old file.
 9. **If scope shifted significantly, recommend a NEW room** rather than patching.
    Report a diff-style summary and STOP for review before any new drafting.
 
@@ -399,7 +408,8 @@ maintenance_links:
   missing_context: 99_review/missing_context.md
 ```
 
-4. Write a `README.md` (title, `Status`, `Last refreshed`, purpose, `## Contents`
+4. Write a `README.md` (title, `Status`, `Review status` — mirroring
+   `room.yaml: review_status`, `Last refreshed`, purpose, `## Contents`
    stub, `## Status snapshot` stub, `## Maintenance links`) and seed empty
    `02_inventory/source_inventory.md` (with the 13-col header) + `.csv`, and empty
    `99_review/*` logs.
