@@ -55,10 +55,12 @@ All notable changes to the skills in this repo.
   prior render is re-ingested every session; it is data, not instruction, and may
   carry a claim that was never true.
 - **`project-room`** — "moving a file edits every claim that addresses it by
-  name" is now stated in Safety & scope, with the reference sweep required in the
-  same pass as the move. Cross-references are written as bare filenames in prose,
-  so a relocation silently repoints every document that named one — reorganizing
-  is provenance editing. Reported in #3.
+  name" is now stated in Safety & scope. Cross-references are bare filenames in
+  prose, so a relocation silently repoints every document that named one —
+  reorganizing is provenance editing. References are fixed in place only in the
+  files principle 10 allows (README, working brief, logs); saved outputs are
+  create-only, so those resolve through the logged move plan instead. Reported
+  in #3.
 - **`project-room`** — Refresh sub-step 9 is a **hard trigger**: a request for a
   deliverable other than `room.yaml: deliverable` stops and recommends a new
   room. The Intent section now states the boundary directly — a room is a unit of
@@ -110,7 +112,10 @@ All notable changes to the skills in this repo.
   artifact for every surviving claim — *presence of an identifier is not proof*,
   and principle 8 means the agent cannot verify one itself. Unconfirmed claims
   are rewritten as `planned` / `targeted` / `[⚠️ UNVERIFIED]`, never deleted, and
-  the agent never marks a document verified on its own authority. Reported in #3.
+  the agent never marks a document verified on its own authority. The gate runs
+  before saving where possible; a correction to an already-saved draft goes into
+  a new suffixed draft, since principle 10 makes saved outputs create-only.
+  Reported in #3.
 - **`project-room`** — **Step 7, Archive superseded outputs.** Every other
   operation adds files and the skill forbids removal, so superseded drafts
   accumulated beside current ones with no way to tell which was live. Excluding

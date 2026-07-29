@@ -340,9 +340,8 @@ only; add `-2` if it exists) — never overwrite a prior draft.
 
 The review gate protects what goes *in*; this one protects what goes *out*. Run
 it before presenting any deliverable as finished, and always before it is shared
-beyond the person who asked for it. The conflict pass cannot cover this ground:
-it compares sources against each other, and a forward-looking claim the room
-authored is not a source claim.
+beyond the requester. The conflict pass cannot cover this ground: it compares
+sources against each other, and a claim the room authored is not a source claim.
 
 1. **Say who it is for.** A document addressed beyond the requester — leadership,
    a customer, a wider team — needs explicit human sign-off, not just a finished
@@ -362,7 +361,9 @@ authored is not a source claim.
    from a transcript proves only that the transcript mentioned it. Ask.
 5. **Unconfirmed claims are rewritten, not deleted** — `planned`, `targeted`,
    `[⚠️ UNVERIFIED — no confirmed <artifact>]`. A date with no confirmation is a
-   target, not a delivery.
+   target, not a delivery. Run this gate **before saving** where you can: once a
+   draft is saved it is create-only (principle 10), so a correction goes into a
+   new suffixed draft, never in place.
 6. **Report what changed and STOP.** Never mark a document verified on your own
    authority: a false verification badge reads as *checked* and is worse than the
    vague claim it replaced.
@@ -451,20 +452,19 @@ maintenance_links:
 
 ## Step 7 — Archive superseded outputs (optional)
 
-Every other operation adds files, so over a long-lived room superseded drafts
-pile up beside current ones with nothing to retire them and no way for a reader
-to tell which is live. This is the only operation that moves anything, and it
-touches `05_outputs/` **only** — never a source, never `00_originals/`, never a
-`99_review/history/` snapshot.
+Every other operation adds files, so superseded drafts pile up beside current
+ones with nothing to retire them and no way to tell which is live. This is the
+only operation that moves anything, and it touches `05_outputs/` **only** —
+never a source, never `00_originals/`, never a `99_review/history/` snapshot.
 
 1. **The human names the superseded set.** Propose it; never decide it, and never
    infer supersession from dates alone.
 2. **Snapshot first** (principle 4) and confirm the room is sync-clean.
 3. **Write the move plan to `change_log.md` before moving anything** — old path →
-   new path per file. An interrupted run is then resumable and a re-run skips
-   what already moved.
-4. **Move, never delete**, into `05_outputs/_superseded/`, updating every
-   cross-reference in the same pass (see Safety & scope). Re-verify sync-clean.
+   new path per file, so an interrupted run is resumable and a re-run is a no-op.
+4. **Move, never delete**, into `05_outputs/_superseded/`. The plan logged in
+   step 3 *is* the resolution index — a reference naming a moved file resolves
+   through `change_log.md`. Re-verify sync-clean.
 5. Report the moves. A superseded **source** is never archived this way — it
    keeps its row and its bytes and is marked in the inventory (principle 2).
 
@@ -475,10 +475,10 @@ touches `05_outputs/` **only** — never a source, never `00_originals/`, never 
 - Never edit files *under* `00_originals/` except the generated
   `00_originals/README.md` index. Never renumber source IDs.
 - **Moving a file edits every claim that addresses it by name.** Cross-references
-  are written as bare filenames in prose, so a relocation silently repoints every
-  document that named one. Before any move, find them
-  (`grep -rn "<filename>" "$room"`), update them in the same pass, and log the
-  move *and* the updated references. Reorganizing is provenance editing.
+  are bare filenames in prose, so a relocation silently repoints every document
+  that named one. Find them first (`grep -rn "<filename>" "$room"`); fix them in
+  place only where principle 10 allows it (README, working brief, logs) — saved
+  outputs are create-only, so those resolve through the logged move plan.
 - `99_review/prep_summary.json` is a generated snapshot of the last index/refresh:
   `{room, last_refreshed, review_status, counts:{sources,high,medium,low},
   duplicates, conflicts, missing_context}`. Create it on first index; regenerate
