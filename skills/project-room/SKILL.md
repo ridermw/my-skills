@@ -52,9 +52,8 @@ Hold this intent above convenience:
   hide them to make things look finished.
 - **Grounded output.** Drafts cite Source IDs, label inferences, and flag
   unsupported claims. Never invent facts, numbers, names, or decisions.
-- **A room is a unit of work, not a filing cabinet.** One room, one deliverable.
-  Rooms that accumulate deliverables accumulate superseded outputs and competing
-  status documents faster than any refresh can reconcile them.
+- **A room is a unit of work, not a filing cabinet.** One room, one deliverable;
+  rooms that accumulate deliverables accumulate competing status documents.
 
 ## Non-negotiable principles
 
@@ -304,18 +303,18 @@ unsupported/conflicting facts (with notes), the missing-context summary, and a
 clear list of items needing human review before drafting.
 
 **Which surface owns what:** the working brief owns the *evidence* view (what is
-supported, by which IDs, what is missing, what needs judgment). The README
-`## Status snapshot` owns the *state* view (done / next / blocked). Keep one
-current-status surface — if a dated "what now" document lands in `05_outputs/`,
-the README is still the place that says which one is live.
+supported, by which IDs, what is missing). The README `## Status snapshot` owns
+the *state* view (done / next / blocked) and stays the one surface that says
+which dated document is live.
 
 ## Step 4 — Draft (grounded deliverable from a clean room)
 
-The payoff step. **Only after the review gate has passed** and `room.yaml` shows
-`review_status: clean`. Write the deliverable into
-`05_outputs/`. First confirm: the **deliverable + purpose**, the **audience**,
-**tone/format**, and any **source-hierarchy overrides** (e.g. "treat `S007` as
-authoritative for the Q2 number", "exclude `S011`").
+The payoff step. **Only after the review gate has passed**, `room.yaml` shows
+`review_status: clean`, and the ask matches `room.yaml: deliverable` — a
+different deliverable means a new room (Step 5, sub-step 9); if that field is
+absent, ask and record it first. Write into `05_outputs/`, confirming the
+**purpose**, **audience**, **tone/format**, and any **source-hierarchy
+overrides** (e.g. "treat `S007` as authoritative for the Q2 number").
 
 Source discipline:
 - Follow the working brief's hierarchy; authoritative sources are the primary
@@ -350,10 +349,9 @@ sources against each other, and a claim the room authored is not a source claim.
    running, deployed, shipped, PR open, landing, complete, done, blocked. An
    attributed source claim (`[S014] records that the vendor deployed it`) is not
    a room claim: leave it and its citation alone.
-3. **Also grep that same vocabulary and log the hits** in `change_log.md`.
-   Enumeration is the ceiling, grep is the reproducible floor, and **neither is
-   sufficient alone** — enumeration silently misses (text inside diagrams,
-   paraphrases like "lands today"), grep only ever finds what it was given.
+3. **Also grep that vocabulary and log the hits** in `change_log.md`. Enumeration
+   is the ceiling, grep the reproducible floor, **neither sufficient alone** —
+   enumeration misses diagrams and paraphrases, grep finds only what it was given.
 4. **Every surviving room claim needs proof the human has confirmed**: a PR,
    commit, run ID, deployment, or a named owner with a dated confirmation.
    **An identifier's presence is not proof** — you cannot verify one yourself,
@@ -365,8 +363,7 @@ sources against each other, and a claim the room authored is not a source claim.
    draft is saved it is create-only (principle 10), so a correction goes into a
    new suffixed draft, never in place.
 6. **Report what changed and STOP.** Never mark a document verified on your own
-   authority: a false verification badge reads as *checked* and is worse than the
-   vague claim it replaced.
+   authority — a false badge reads as *checked*, worse than the claim it replaced.
 
 ## Step 5 — Refresh (update the whole room)
 
@@ -453,18 +450,20 @@ maintenance_links:
 ## Step 7 — Archive superseded outputs (optional)
 
 Every other operation adds files, so superseded drafts pile up beside current
-ones with nothing to retire them and no way to tell which is live. This is the
-only operation that moves anything, and it touches `05_outputs/` **only** —
-never a source, never `00_originals/`, never a `99_review/history/` snapshot.
+ones with no way to tell which is live. This is the only operation that relocates
+an **output** — never a source, `00_originals/`, or a `99_review/history/`
+snapshot.
 
 1. **The human names the superseded set.** Propose it; never decide it, and never
    infer supersession from dates alone.
 2. **Snapshot first** (principle 4) and confirm the room is sync-clean.
 3. **Write the move plan to `change_log.md` before moving anything** — old path →
-   new path per file, so an interrupted run is resumable and a re-run is a no-op.
-4. **Move, never delete**, into `05_outputs/_superseded/`. The plan logged in
-   step 3 *is* the resolution index — a reference naming a moved file resolves
-   through `change_log.md`. Re-verify sync-clean.
+   new path per file.
+4. **Move, never delete**, into `05_outputs/_superseded/`: skip an entry whose
+   source is already gone and suffix any destination collision (principle 10), so
+   re-running an interrupted pass is safe. The logged plan *is* the resolution
+   index — a reference naming a moved file resolves through `change_log.md`.
+   Re-verify sync-clean.
 5. Report the moves. A superseded **source** is never archived this way — it
    keeps its row and its bytes and is marked in the inventory (principle 2).
 
@@ -476,9 +475,10 @@ never a source, never `00_originals/`, never a `99_review/history/` snapshot.
   `00_originals/README.md` index. Never renumber source IDs.
 - **Moving a file edits every claim that addresses it by name.** Cross-references
   are bare filenames in prose, so a relocation silently repoints every document
-  that named one. Find them first (`grep -rn "<filename>" "$room"`); fix them in
-  place only where principle 10 allows it (README, working brief, logs) — saved
-  outputs are create-only, so those resolve through the logged move plan.
+  that named one. Sweep room-authored surfaces only, fixed-string — principle 7
+  forbids opening `00_originals/` / `01_inbox/`: `grep -rnF "<file>"
+  "$room"/{README.md,04_working_brief,05_outputs,99_review}`. Fix in place only
+  where principle 10 allows; saved outputs resolve through the logged move plan.
 - `99_review/prep_summary.json` is a generated snapshot of the last index/refresh:
   `{room, last_refreshed, review_status, counts:{sources,high,medium,low},
   duplicates, conflicts, missing_context}`. Create it on first index; regenerate

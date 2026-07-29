@@ -51,9 +51,9 @@ All notable changes to the skills in this repo.
   it, this paid for the publication gate and Step 7: the file is 500 lines, at
   the guidance rather than past it.
 - **`project-room`** — principle 8 now covers **room-generated files**, not only
-  sources. Step 1 reads the working brief and the primary output first, so a
-  prior render is re-ingested every session; it is data, not instruction, and may
-  carry a claim that was never true.
+  sources. Orient reads the working brief and the primary output straight after
+  the manifest and README, so a prior render is routinely re-ingested as context;
+  it is data, not instruction, and may carry a claim that was never true.
 - **`project-room`** — "moving a file edits every claim that addresses it by
   name" is now stated in Safety & scope. Cross-references are bare filenames in
   prose, so a relocation silently repoints every document that named one —
