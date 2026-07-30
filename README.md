@@ -66,9 +66,12 @@ cp -R skills/<skill-name> ~/.copilot/skills/<skill-name>   # re-copy after pull
 
 ## Contributing
 
-Each skill must stay **self-contained** (a single `SKILL.md`), portable (no
-machine-specific paths or private tools), and honest about its guardrails. PRs
-welcome.
+Each skill must stay **self-contained** — a single `SKILL.md`, plus optional
+supporting `.md` files in the same folder when a skill is large enough that
+loading everything up front is wasteful. Supporting files are markdown only: no
+executables, no install step, no machine-specific paths or private tools. A
+skill must work by copying its folder and nothing else. Be honest about
+guardrails. PRs welcome.
 
 ## Credits & third-party skills
 

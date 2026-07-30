@@ -4,6 +4,46 @@ All notable changes to the skills in this repo.
 
 ## [Unreleased]
 
+### Added
+- **`project-room`** — a **conversation index** for rooms that hold chats or
+  meetings. The inventory records one row per *file*, but a chat thread or
+  meeting series is a *conversation*: one thread yields many captures over time,
+  and two captures of the same thread are not independent corroboration. Rooms
+  holding chat/meeting sources now keep `02_inventory/chat-index.md`, registered
+  as `maintenance_links: chat_index`, keyed on the platform's permanent
+  conversation id. Index registers every new conversation capture there, and
+  Refresh reconciles the two indexes. Found because a room reported a 1:1 as
+  "last captured 15 days ago" while a transcript from two days earlier sat in
+  the inventory, unregistered — the file index and the conversation index had
+  drifted and nothing checked them against each other.
+  - Two traps are called out explicitly, both observed in a real room: **never
+    key on one segment of a conversation id** (a 1:1 id embeds *your own* user
+    id, so a prefix match collapses every 1:1 you have into a single thread),
+    and **an AI recap is not coverage** (recaps have been seen to omit
+    objections the verbatim transcript records).
+
+### Changed
+- **`project-room`** — install now copies the whole `project-room/` folder. The
+  split made the operation files load-bearing, but the install text still said
+  "drop this single file", which would have left the skill unable to run Index,
+  Draft, Refresh, New room or Archive. Reported in review of #6.
+- **`project-room`** — the conversation index now specifies a canonical markdown
+  shape (quick map, numbered per-conversation sections, capture table, known
+  gaps) rather than only naming the fields. Two agents following the old wording
+  could each produce a valid-looking index that nothing else could read.
+  Reported in review of #6.
+- **`project-room`** — split into `SKILL.md` plus one markdown file per
+  operation (`index.md`, `draft.md`, `refresh.md`, `new-room.md`,
+  `archive.md`), loaded on demand. `SKILL.md` keeps the principles, room
+  anatomy and room resolution that every operation depends on, and drops from
+  525 to 327 lines. Splitting instead into separate *skills* was measured and
+  rejected: the shared substrate is 43% of the file — larger than either
+  lifecycle phase — so an init/maintain split would have meant 747 lines across
+  two skills with two drifting copies of the principles.
+- **Contributing contract** — a skill may now ship supporting `.md` files
+  alongside its `SKILL.md` in the same folder. Markdown only: no executables and
+  no install step, so copying the folder is still the whole installation.
+
 ### Fixed
 - **`project-room`** — a room-written output could be cited as evidence for a
   fact the room never observed. `05_outputs/` was the one generated directory
