@@ -1,6 +1,6 @@
 ---
 name: project-room
-description: 'Turn a messy pile of sources into an inspectable "project room" and produce a grounded, source-cited deliverable. Portable and self-contained: works with no prior setup — on first use it creates a project-rooms base folder (default ~/project-rooms, override with PROJECT_ROOMS_DIR) and your first room. Invoked with no room named, it lists existing rooms and asks which to use, with "create new project room" last. A room prepares an inspectable source inventory + duplicate/conflict/missing-context logs + summaries + working brief, STOPS for human review, THEN drafts a deliverable that cites Source IDs, labels inferences, and flags unsupported claims. It can also capture and index sources as you work. Triggers: "project room", "organize my sources", "build a source inventory", "which room is this", "index the room sources", "draft from the room", "refresh the project room", "archive superseded outputs", "new project room", "working brief". Preparation before drafting; stable IDs; never overwrites originals or invents facts.'
+description: 'Turn a messy pile of sources into an inspectable "project room" and produce a grounded, source-cited deliverable. Portable and self-contained: works with no prior setup — on first use it creates a project-rooms base folder (default ~/project-rooms, override with PROJECT_ROOMS_DIR) and your first room. Invoked with no room named, it lists existing rooms and asks which to use, with "create new project room" last. A room prepares an inspectable source inventory + duplicate/conflict/missing-context logs + summaries + working brief, STOPS for human review, THEN drafts a deliverable that cites Source IDs, labels inferences, and flags unsupported claims. It can also capture and index sources as you work. Triggers: "project room", "organize my sources", "build a source inventory", "which room is this", "index the room sources", "draft from the room", "refresh the project room", "archive superseded outputs", "new project room", "working brief". Preparation before drafting; stable IDs; never overwrites originals or invents facts. This file holds the principles, room anatomy and room resolution; each operation (index, draft, refresh, new-room, archive) lives in its own markdown file in this same folder and is loaded on demand.'
 ---
 
 # Project Room (portable)
@@ -45,7 +45,7 @@ Optional: set `PROJECT_ROOMS_DIR` to choose where rooms live (default
 Hold this intent above convenience:
 
 - **Preparation before drafting.** Build and clean the room first; write the
-  deliverable only from a reviewed room. The **review gate** (Step 3, sub-step
+  deliverable only from a reviewed room. The **review gate** (`index.md`, sub-step
   10) is the checkpoint: the inventory is the most important artifact, and the
   human corrects authority/relevance/conflicts there before anything is drafted.
 - **Inspectable, not smoothed.** Surface uncertainty, conflicts, and gaps; never
@@ -108,10 +108,10 @@ with `01_inbox`, `02_inventory`, `03_source_summaries`, `04_working_brief`,
 | `README.md` | Human overview + **status snapshot** + `Review status` mirror + maintenance links |
 | `00_originals/` | Copies of source files (never mutated). Has its own `README.md` index. |
 | `01_inbox/` | New / unclear-relevance material awaiting triage |
-| `02_inventory/` | `source_inventory.md` (13-col table) + `source_inventory.csv` |
+| `02_inventory/` | `source_inventory.md` (13-col table) + `source_inventory.csv`, plus `chat-index.md` if the room holds conversations |
 | `03_source_summaries/` | One 150–300-word summary per high/medium source |
 | `04_working_brief/` | `working_brief.md` — the synthesis layer before drafting |
-| `05_outputs/` | The deliverable drafts (plus `_superseded/` once Step 7 runs) |
+| `05_outputs/` | The deliverable drafts (plus `_superseded/` once `archive.md` runs) |
 | `06_evidence/` | Reviews, transcripts, samples, diagrams (optional) |
 | `07_assets/` | Images, binaries, media (optional) |
 | `08_tools/` | Repro/export scripts used to capture sources (optional) |
@@ -137,6 +137,28 @@ Change,Source ID,Path,File name,Source type,Date,Owner,Relevance,Authority,Curre
   sources:** a document the room wrote never gets a Source ID or an Authority
   value, and is never cited as evidence for a fact the room did not observe.
 
+### Conversation index (rooms holding chats or meetings)
+
+A chat thread or meeting series is a **conversation**, not a file: one thread
+yields many captures over time, and two captures of the same thread are **not**
+independent corroboration. When a room holds any chat/meeting source, keep
+`02_inventory/chat-index.md` beside the file inventory, registered under
+`maintenance_links: chat_index`.
+
+- Key each conversation on the platform's **permanent conversation id**
+  (`chat_id`) — names and exports change, the id does not. Never key on the
+  display name, nor on one segment of the id: a 1:1 id embeds *your own* user id,
+  so a prefix match collapses all your 1:1s into a single thread.
+- Per conversation record participants, why it matters, and one row per capture:
+  Source ID, captured date, coverage window, message count, and whether it is
+  **complete** — a paged export reporting more results is a partial window, not
+  the thread. For a meeting series track each occurrence's artifacts separately;
+  **an AI recap is not coverage**, recaps have been observed to omit objections
+  the verbatim transcript records.
+- **Every conversation source in the inventory must be registered here.** The two
+  disagreeing is a defect: the inventory is authoritative for what *exists*, the
+  chat index for what it *covers*.
+
 ## Step 0 — Resolve the base folder and room
 
 **Resolve the base folder** (where all rooms live), in order:
@@ -158,36 +180,37 @@ Change,Source ID,Path,File name,Source type,Date,Owner,Relevance,Authority,Curre
   Drive), or a custom path.
 - Create it and persist the **absolute** path so future sessions skip the prompt:
   `mkdir -p ~/.config/project-rooms && printf '%s\n' "$(cd "<base>" && pwd)" > ~/.config/project-rooms/base`
-- Then go straight to **New room** (Step 6).
+- Then go straight to **New room** (`new-room.md`).
 
 **Otherwise, show the picker.** When invoked with no room named, do not guess:
 1. List every room by scanning `<base>/*/room.yaml`; read `project`, `note`,
    `last_refreshed` for a one-line label.
 2. Ask which room this session should use via a single-select prompt. Build
    options in this order: one per room (`<name> — <note> (refreshed <date>)`),
-   then **the last option is always `➕ Create new project room`** → Step 6.
+   then **the last option is always `➕ Create new project room`** → `new-room.md`.
 3. If the user named a room explicitly, honor it and skip the menu.
 
 Confirm the resolved room path before any write, then run the requested
 operation (default: **Orient**).
 
 ```bash
-# Resolve base: env var > pointer file (non-empty, existing dir) > default.
+# Implements the resolution order above. Subtleties worth keeping: expand a
+# stored "~", treat a manifest as valid only if it has a project: line, and
+# parse note/last_refreshed in a way that keeps colons in the value.
 BASE="${PROJECT_ROOMS_DIR:-}"
 if [ -z "$BASE" ]; then
   PTR="$(sed -n '1p' ~/.config/project-rooms/base 2>/dev/null)"
-  case "$PTR" in "~"*) PTR="$HOME${PTR#\~}";; esac          # expand a stored ~
-  if [ -n "$PTR" ] && [ -d "$PTR" ]; then BASE="$PTR"; else BASE="$HOME/project-rooms"; fi
+  case "$PTR" in "~"*) PTR="$HOME${PTR#\~}";; esac
+  { [ -n "$PTR" ] && [ -d "$PTR" ]; } && BASE="$PTR" || BASE="$HOME/project-rooms"
 fi
-# Count only VALID manifests (must contain a project: line); list malformed ones.
 valid=0
 for f in "$BASE"/*/room.yaml; do
   [ -e "$f" ] || continue
   grep -q '^project:' "$f" 2>/dev/null || { echo "MALFORMED (listed, not modified): $f"; continue; }
-  valid=$((valid+1)); name=$(basename "$(dirname "$f")")
-  note=$(sed -n 's/^note:[[:space:]]*//p' "$f" | head -1)         # keeps colons in value
-  refreshed=$(sed -n 's/^last_refreshed:[[:space:]]*//p' "$f" | head -1)
-  printf '%-30s %s (refreshed %s)\n' "$name" "${note:-—}" "${refreshed:-?}"
+  valid=$((valid+1))
+  printf '%-30s %s (refreshed %s)\n' "$(basename "$(dirname "$f")")" \
+    "$(sed -n 's/^note:[[:space:]]*//p' "$f" | head -1)" \
+    "$(sed -n 's/^last_refreshed:[[:space:]]*//p' "$f" | head -1)"
 done
 [ "$valid" -eq 0 ] && echo "FIRST_RUN: bootstrap base ($BASE) + first room"
 ```
@@ -254,225 +277,28 @@ mode.
    the gap in `99_review/missing_context.md`.
 3. Capture and index are separate — drop several things, then index in one pass.
 
-## Step 3 — Index (inventory + build the retrieval layer)
+## Operations — load the file you need
 
-Fold `01_inbox/` (and any un-indexed `00_originals/`) into the inventory **and**
-produce the summary tier.
-1. Determine the room's `id_prefix` (from `room.yaml`, else none) and the highest
-   existing S-number.
-2. For each new source: assign the next `S###`, fill all columns, mark **Change =
-   new**. Never renumber existing rows. The **Key claims or content** cell is
-   mandatory and must be a tight, specific one-liner — it is the abstract the
-   seek protocol scans. **If the source was flagged sensitive (principle 7): do
-   not open or copy it** — set Key claims to `SENSITIVE — not inspected`, skip the
-   content scan and the summary, and log the evidence gap in `missing_context.md`.
-3. **Build the summary tier:** for every high/medium-relevance **non-sensitive**
-   source, write `03_source_summaries/<SourceID>-<slug>.md` (**150–300 words**)
-   answering: (1) what is this source? (2) what does it contain that matters? (3)
-   what claims/numbers/decisions does it support? (4) limitations? (5) how should
-   it be used in the deliverable? Cite the Source ID; flag uncertainty.
-4. **Heavy inbox (many/large files)?** Run the scan in a subagent that returns
-   draft rows + summaries, so the main session never loads the raw bytes.
-5. Move indexed items from `01_inbox/` into `00_originals/` only if the user wants
-   the inbox drained; else record the inbox path. State which you did.
-6. Regenerate `source_inventory.csv` (identical columns/order).
-7. **Duplicate/version pass (mandatory):** scan for exact duplicates, likely
-   duplicates, and version families. Propose which is current and why. Delete
-   nothing; record in `duplicate_log.md`.
-8. **Conflict + missing-context pass (mandatory):** compare claims/numbers/
-   decisions across sources. Log to `conflict_log.md` (who disagrees, which is
-   more authoritative, does it need human judgment) and `missing_context.md`
-   (referenced-but-absent sources, unsupported claims, numbers without stated
-   assumptions, decisions with no owner). Never resolve silently.
-9. Update `00_originals/README.md` index if you added originals.
-10. **STOP — the review gate.** Set `review_status: needs_review` in `room.yaml` and in
-    the README, then present a summary (files scanned, high/med/low counts,
-    duplicates/version families, conflicts/missing items, top 3–5 items needing
-    review), **state whether anything just indexed contradicts the README
-    `## Status snapshot`** (if it does, say which line and propose the
-    correction — do not edit it silently), and ask: "Review the inventory and
-    working brief; tell me what to correct before I draft anything." Do not
-    draft here. Only when the human approves do you set `review_status: clean`.
+Read this file first; it holds the principles, anatomy and room resolution that
+every operation depends on. Then load **only** the operation you are running.
+Each file lives in this same folder.
 
-## Working brief
-
-After indexing, write/update `04_working_brief/working_brief.md`: project + target
-deliverable, the recommended source hierarchy (which sources are authoritative /
-supporting / background / excluded, by ID), well-supported facts (with IDs),
-unsupported/conflicting facts (with notes), the missing-context summary, and a
-clear list of items needing human review before drafting.
-
-**Which surface owns what:** the working brief owns the *evidence* view (what is
-supported, by which IDs, what is missing). The README `## Status snapshot` owns
-the *state* view (done / next / blocked) and stays the one surface that says
-which dated document is live.
-
-## Step 4 — Draft (grounded deliverable from a clean room)
-
-The payoff step. **Only after the review gate has passed**, `room.yaml` shows
-`review_status: clean`, and the ask matches `room.yaml: deliverable` — a
-different deliverable means a new room (Step 5, sub-step 9); if that field is
-absent, ask and record it first. Write into `05_outputs/`, confirming the
-**purpose**, **audience**, **tone/format**, and any **source-hierarchy
-overrides** (e.g. "treat `S007` as authoritative for the Q2 number").
-
-Source discipline:
-- Follow the working brief's hierarchy; authoritative sources are the primary
-  basis, supporting adds context, background only when needed and labeled.
-- **Cite Source IDs inline** (`[S042]`) on any claim resting on specific evidence.
-- **Label inferences** no single source states: `[Inference from S002+S005]` /
-  `[Author's synthesis]`.
-- **Flag unsupported claims** the draft needs but the room does not back:
-  `[⚠️ NOT SUPPORTED BY SOURCES — verify]`. Never invent facts, numbers, or names.
-- On a conflict, note both sides rather than silently picking one; never blend
-  numbers across versions.
-
-Structure: lead with the core message/recommendation; organize by the
-deliverable's logic, not source order; end with an **Open Items** list (claims to
-verify, missing data, decisions the reader must make). Append a **Source Usage
-Map**: each Source ID → how used (primary / supporting / background / excluded),
-plus any inventory source left unused and why. Do not strip citations/flags to
-read smoother. Save to `05_outputs/<deliverable>-<YYYYMMDD>-<HHMM>.md` (create-
-only; add `-2` if it exists) — never overwrite a prior draft.
-
-### The publication gate — before it leaves the room
-
-The review gate protects what goes *in*; this one protects what goes *out*. Run
-it before presenting any deliverable as finished, and always before it is shared
-beyond the requester. The conflict pass cannot cover this ground: it compares
-sources against each other, and a claim the room authored is not a source claim.
-
-1. **Say who it is for.** A document addressed beyond the requester — leadership,
-   a customer, a wider team — needs explicit human sign-off, not just a finished
-   draft. Blast radius, not length, decides how hard this gate is.
-2. **Enumerate every delivery-state assertion in the room's own voice** — built,
-   running, deployed, shipped, PR open, landing, complete, done, blocked. An
-   attributed source claim (`[S014] records that the vendor deployed it`) is not
-   a room claim: leave it and its citation alone.
-3. **Also grep that vocabulary and log the hits** in `change_log.md`. Enumeration
-   is the ceiling, grep the reproducible floor, **neither sufficient alone** —
-   enumeration misses diagrams and paraphrases, grep finds only what it was given.
-4. **Every surviving room claim needs proof the human has confirmed**: a PR,
-   commit, run ID, deployment, or a named owner with a dated confirmation.
-   **An identifier's presence is not proof** — you cannot verify one yourself,
-   since principle 8 forbids acting on a link found in a source, and an ID lifted
-   from a transcript proves only that the transcript mentioned it. Ask.
-5. **Unconfirmed claims are rewritten, not deleted** — `planned`, `targeted`,
-   `[⚠️ UNVERIFIED — no confirmed <artifact>]`. A date with no confirmation is a
-   target, not a delivery. Run this gate **before saving** where you can: once a
-   draft is saved it is create-only (principle 10), so a correction goes into a
-   new suffixed draft, never in place.
-6. **Report what changed and STOP.** Never mark a document verified on your own
-   authority — a false badge reads as *checked*, worse than the claim it replaced.
-
-## Step 5 — Refresh (update the whole room)
-
-Use when sources changed materially or before a new drafting pass.
-1. **Snapshot first** into a fresh `99_review/history/<YYYY-MM-DD>[-N]-pre-refresh/`
-   (never overwrite an existing snapshot). Confirm the room is fully synced with
-   no conflict-copy files first — cloud sync is replication, not concurrency, so
-   run one Index/Refresh writer at a time and STOP on any conflict copy.
-2. **Identify changes** vs the existing inventory: new / updated / no-longer-
-   present sources, and any whose authority/relevance changed. Do not assume the
-   old analysis still holds.
-3. Run **Index** for new material. A materially changed source gets a **new
-   Source ID** (`Change = new`, `supersedes: <old-id>`), keeping the old row and
-   bytes; only metadata-only edits mark an existing row `Change = updated`. Mark a
-   vanished source `[REMOVED — no longer present]`; never delete its row.
-4. Re-run the **duplicate/version** and **conflict** passes — call out any new
-   file that contradicts something the working brief treated as settled.
-5. Update `missing_context.md` in three buckets: **now resolved**, **still
-   missing**, **newly identified**.
-6. Refresh changed summaries; reconcile the working brief, noting superseded
-   guidance rather than deleting it.
-7. Write a dated `change_log.md` section and regenerate `prep_summary.json`.
-8. Bump `last_refreshed` in `room.yaml` **and** README, and set
-   `review_status: needs_review` **in both** (a refresh invalidates prior
-   approval). Re-check the README `## Status snapshot` against what changed and
-   propose corrections rather than only moving the date — a fresh date over
-   stale content is worse than an obviously old file.
-9. **A second deliverable means a second room.** If the room is asked for a
-   deliverable other than its `room.yaml: deliverable`, or scope has shifted
-   materially, STOP and recommend a NEW room — do not patch. Report a diff-style
-   summary and STOP for review before any new drafting.
-
-## Step 6 — New room (build)
-
-Building follows: **ask, then build in phases, then stop at the review gate.**
-
-**Intake (ask first, one at a time, wait for answers):**
-1. What is this project, and what is the final **deliverable**?
-2. Which folders/paths hold the sources? (Search only those + subfolders.)
-3. Any **sensitive/confidential** files that must not be copied or summarized?
-4. Anything already known about which sources are current vs outdated, or most
-   authoritative?
-
-**Then build:**
-1. Pick a kebab-case `<room>` name; optionally an `id_prefix` (e.g. `MEMO`).
-2. Create the skeleton — **abort if the room already exists** (never clobber):
-
-```bash
-room="$BASE/<room>"
-[ -e "$room" ] && echo "ROOM EXISTS: pick another name" || \
-  mkdir -p "$room"/{00_originals,01_inbox,02_inventory,03_source_summaries,04_working_brief,05_outputs,06_evidence,07_assets,08_tools,99_review/history}
-```
-
-3. Write `room.yaml`:
-
-```yaml
-project: <room>
-status: active project room
-review_status: needs_review    # becomes clean once the human approves the inventory
-note: <one-line purpose>
-deliverable: <the target deliverable>
-last_refreshed: <YYYY-MM-DD>
-id_prefix: <PREFIX>          # optional, for stable IDs
-source_paths:               # the folders you were told to scan
-  - <path>
-maintenance_links:
-  inventory: 02_inventory/source_inventory.md
-  working_brief: 04_working_brief/working_brief.md
-  change_log: 99_review/change_log.md
-  duplicate_log: 99_review/duplicate_log.md
-  conflict_log: 99_review/conflict_log.md
-  missing_context: 99_review/missing_context.md
-```
-
-4. Write a `README.md` (title, `Status`, `Review status` — mirroring
-   `room.yaml: review_status`, `Last refreshed`, purpose, `## Contents`
-   stub, `## Status snapshot` stub, `## Maintenance links`) and seed empty
-   `02_inventory/source_inventory.md` (with the 13-col header) + `.csv`, and empty
-   `99_review/*` logs.
-5. **Populate by phases:** **copy** (never move) the named sources into
-   `00_originals/` (unclear relevance → `01_inbox/`), then run **Index** (Step 3)
-   through to its review gate. Do not draft.
-
-## Step 7 — Archive superseded outputs (optional)
-
-Every other operation adds files, so superseded drafts pile up beside current
-ones with no way to tell which is live. This is the only operation that relocates
-an **output** — never a source, `00_originals/`, or a `99_review/history/`
-snapshot.
-
-1. **The human names the superseded set.** Propose it; never decide it, and never
-   infer supersession from dates alone.
-2. **Snapshot first** (principle 4) and confirm the room is sync-clean.
-3. **Write the move plan to `change_log.md` before moving anything** — old path →
-   new path per file.
-4. **Move, never delete**, into `05_outputs/_superseded/`: skip an entry whose
-   source is already gone and suffix any destination collision (principle 10), so
-   re-running an interrupted pass is safe. The logged plan *is* the resolution
-   index — a reference naming a moved file resolves through `change_log.md`.
-   Re-verify sync-clean.
-5. Report the moves. A superseded **source** is never archived this way — it
-   keeps its row and its bytes and is marked in the inventory (principle 2).
+| Operation | File | When |
+|---|---|---|
+| **Orient** | *(above)* | Default. Read the room's current state. |
+| **Capture** | *(above)* | Save one new source into the room. |
+| **Index** | `index.md` | Fold `01_inbox/` into the inventory + summaries, then STOP at the review gate. |
+| **Draft** | `draft.md` | Write the deliverable from a `review_status: clean` room, then run the publication gate. |
+| **Refresh** | `refresh.md` | Sources changed materially, or before a new drafting pass. |
+| **New room** | `new-room.md` | Build a room that does not exist yet. Once per room. |
+| **Archive** | `archive.md` | Retire a superseded output without breaking its citations. |
 
 ## Safety & scope
 
 - Writes stay inside the resolved room — the only exception is the base pointer
   `~/.config/project-rooms/base`. Confirm the room path before writing.
-- Never edit files *under* `00_originals/` except the generated
-  `00_originals/README.md` index. Never renumber source IDs.
+- Never edit files *under* `00_originals/` except its generated `README.md` index;
+  never renumber source IDs (principles 1–2).
 - **Moving a file edits every claim that addresses it by name.** Cross-references
   are bare filenames in prose, so a relocation silently repoints every document
   that named one. Sweep room-authored surfaces only, fixed-string — principle 7
@@ -484,7 +310,8 @@ snapshot.
   duplicates, conflicts, missing_context}`. Create it on first index; regenerate
   each index/refresh.
 - If the base is cloud-synced (OneDrive/Dropbox/iCloud/Drive), write plain files
-  and let it sync — don't fight a sync conflict; STOP and report conflict-copy
+  and let it sync. Sync is replication, not concurrency: run **one Index/Refresh
+  writer at a time**, and don't fight a conflict — STOP and report conflict-copy
   filenames (`*-<hostname>.*`, `* (1).*`, `*conflict*`) rather than indexing over
   them.
 - Prefer text formats for durability. For binary sources, keep the original in
