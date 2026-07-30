@@ -22,28 +22,7 @@ All notable changes to the skills in this repo.
     and **an AI recap is not coverage** (recaps have been seen to omit
     objections the verbatim transcript records).
 
-### Added
-- **`extensions/project-room-browser`** — a Copilot CLI canvas that browses a
-  project room: validity and drift signals, the faceted source inventory, room
-  docs, files, and a Teams page showing per-conversation coverage. Read-only and
-  credential-free: its action buttons generate an instruction naming the relevant
-  `project-room` operation file rather than restating the procedure, so the skill
-  stays the single source of truth. Room content is escaped in the UI and quoted
-  inside a labelled untrusted-data block in every generated prompt.
-
 ### Changed
-- **`extensions/project-room-browser`** — adopts the canvas theme contract
-  instead of shipping its own palette. The active theme's colours are injected
-  server-side as raw + semantic token layers, and the stylesheet now contains
-  zero colour literals. Adds a 54-theme picker with light/dark variants and a
-  reset, persisted per-user; switching theme swaps the style element in place so
-  scroll position and selection survive. Theme colours are used verbatim — a
-  low-contrast theme produces an advisory rather than a silent override — and
-  that advisory is measured from the palette against a card surface, because
-  `meta.contrastLevel` proved unreliable (three variants declaring `"high"`
-  measure 4.08–4.36:1). Contrast across all five pages: 0 failures on
-  GitHub/dark, and the remainder on GitHub/light are the theme's own hues,
-  reported rather than repainted.
 - **`project-room`** — split into `SKILL.md` plus one markdown file per
   operation (`index.md`, `draft.md`, `refresh.md`, `new-room.md`,
   `archive.md`), loaded on demand. `SKILL.md` keeps the principles, room
