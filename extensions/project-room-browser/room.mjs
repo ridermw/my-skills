@@ -295,6 +295,16 @@ function daysSince(iso) {
 /**
  * Read a room folder into the shape the UI consumes.
  */
+/* The canonical header in SKILL.md calls column 10 "Current or superseded", but
+   real rooms in the wild use "Lifecycle". Accept either and expose one name, so
+   the facets, filters and the not-safe-to-cite warning work in both. */
+function normaliseRow(r) {
+    if (r.Lifecycle == null && r["Current or superseded"] != null) {
+        return { ...r, Lifecycle: r["Current or superseded"] };
+    }
+    return r;
+}
+
 export async function readRoom(roomPath) {
     const root = path.resolve(roomPath);
     const s = await stat(root); // throws if missing — caller reports it
@@ -307,7 +317,7 @@ export async function readRoom(roomPath) {
     const invRel = room.maintenance_links?.inventory?.replace(/\.md$/, ".csv") || "02_inventory/source_inventory.csv";
     let invText = await readIfPresent(root, invRel);
     if (!invText) invText = await readIfPresent(root, "02_inventory/source_inventory.csv");
-    const sources = invText ? csvToObjects(invText) : [];
+    const sources = invText ? csvToObjects(invText).map(normaliseRow) : [];
 
     const files = await walk(root, root);
     const byTop = new Map();
@@ -325,12 +335,23 @@ export async function readRoom(roomPath) {
     // per-source summaries, generated assets, tools, the inventory and the
     // review logs. Flagging those as "uninventoried" would bury the real
     // signal under ~90 false positives, so they are excluded by design.
-    const SOURCE_DIRS = new Set(["00_originals", "01_inbox", "05_outputs", "06_evidence"]);
+    // 05_outputs holds the room's own drafts and is excluded from the inventory by
+    // the skill, so treating it as a source directory reported every deliverable
+    // as uninventoried drift.
+    const SOURCE_DIRS = new Set(["00_originals", "01_inbox", "06_evidence"]);
     const INDEX_FILES = new Set(["README.md", "readme.md", "index.md"]);
 
     // Compare paths on a normalised key: macOS is case-insensitive and OneDrive
     // returns NFD, so raw string comparison reported false drift both ways.
-    const key = (p) => String(p || "").normalize("NFC").toLowerCase();
+    // Case-fold ONLY where the filesystem is case-insensitive. On Linux an
+    // inventory row for "Report.md" must not be satisfied by "report.md" on disk,
+    // because opening the inventoried path would fail. Unicode normalisation is
+    // portable and stays unconditional (OneDrive hands back NFD).
+    const foldCase = process.platform === "darwin" || process.platform === "win32";
+    const key = (p) => {
+        const n = String(p || "").normalize("NFC");
+        return foldCase ? n.toLowerCase() : n;
+    };
     const fileKeys = new Set(files.filter((f) => !f.dir).map((f) => key(f.rel)));
     const invKeys = new Set(sources.map((r) => key(r.Path)).filter(Boolean));
     const hasFile = (p) => fileKeys.has(key(p));
@@ -487,9 +508,25 @@ export async function readRoom(roomPath) {
                 n += c.unregistered.length;
                 // A newer unregistered capture means the index's own date, and
                 // therefore the staleness verdict, cannot be trusted.
-                if (c.unregistered.length) c.staleDateDisputed = true;
+                if (c.unregistered.length) {
+                    c.staleDateDisputed = true;
+                    // The index's date is the only evidence for "stale", and a newer
+                    // unregistered capture contradicts it. Leaving isStale set kept
+                    // the thread in the sweep targets and kept offering Re-capture --
+                    // the misleading action this is supposed to replace. Reconciling
+                    // the index is the real work, so drop the stale claim and let
+                    // the dispute itself carry the problem.
+                    c.isStale = false;
+                    c.hasProblem =
+                        c.noCaptures ||
+                        c.authoredIncomplete ||
+                        c.incompleteCaptures.length > 0 ||
+                        c.missingArtifacts.length > 0 ||
+                        true; // the unregistered capture is itself the problem
+                }
             }
             teams.counts.unregistered = n;
+            teams.counts.stale = teams.conversations.filter((c) => c.isStale).length;
         }
     } catch (e) {
         teams = { rel: chatRel, error: String(e && e.message) };

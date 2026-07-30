@@ -233,9 +233,9 @@ function render() {
         <span>Room docs</span><span class="n">${Object.keys(d.logs).length}</span></button>
       <button class="nav" type="button" role="tab" id="tab-teams" aria-controls="p-teams" data-v="teams" aria-selected="${VIEW === "teams"}" aria-current="${VIEW === "teams"}">
         <span>Teams</span>${
-            d.teams
-                ? '<span class="n' + (tFlagCount(d.teams) ? " warn" : "") + '">' + (tFlagCount(d.teams) ? tFlagCount(d.teams) + " to sweep" : d.teams.counts.conversations) + "</span>"
-                : '<span class="n">—</span>'
+            !d.teams || d.teams.error
+                ? '<span class="n">' + (d.teams && d.teams.error ? "!" : "\u2014") + "</span>"
+                : '<span class="n' + (tFlagCount(d.teams) ? " warn" : "") + '">' + (tFlagCount(d.teams) ? tFlagCount(d.teams) + " to sweep" : d.teams.counts.conversations) + "</span>"
         }</button>
       <button class="nav" type="button" role="tab" id="tab-files" aria-controls="p-files" data-v="files" aria-selected="${VIEW === "files"}" aria-current="${VIEW === "files"}">
         <span>Files</span><span class="n">${d.files.length}</span></button>
@@ -563,18 +563,60 @@ function matches(s) {
     return true;
 }
 
+/* Sorting. "Source ID" stays the default: the ids are sequential and that is the
+   order the inventory reads on disk. */
+const SORTS = [
+    { k: "id", label: "Source ID" },
+    { k: "date-desc", label: "Newest first" },
+    { k: "date-asc", label: "Oldest first" },
+    { k: "name", label: "File name" },
+    { k: "authority", label: "Authority" },
+    { k: "lifecycle", label: "Lifecycle" },
+];
+let SORT = "id";
+
+function sortRows(rows) {
+    const num = (s) => {
+        const m = String(s || "").match(/S(\d+)/);
+        return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+    };
+    const txt = (v) => String(v || "").toLowerCase();
+    const byDate = (dir) => (a, b) => {
+        // A row with no usable date sorts last either way, rather than pretending
+        // to be the oldest thing in the room.
+        const da = /^\d{4}-\d{2}-\d{2}$/.test(a.Date || "") ? a.Date : "";
+        const db = /^\d{4}-\d{2}-\d{2}$/.test(b.Date || "") ? b.Date : "";
+        if (!da && !db) return num(a["Source ID"]) - num(b["Source ID"]);
+        if (!da) return 1;
+        if (!db) return -1;
+        return da === db ? num(a["Source ID"]) - num(b["Source ID"]) : dir * da.localeCompare(db);
+    };
+    const tie = (a, b) => num(a["Source ID"]) - num(b["Source ID"]);
+    const out = rows.slice();
+    if (SORT === "date-desc") out.sort(byDate(-1));
+    else if (SORT === "date-asc") out.sort(byDate(1));
+    else if (SORT === "name") out.sort((a, b) => txt(a["File name"] || a.Path).localeCompare(txt(b["File name"] || b.Path)) || tie(a, b));
+    else if (SORT === "authority") out.sort((a, b) => txt(a.Authority).localeCompare(txt(b.Authority)) || tie(a, b));
+    else if (SORT === "lifecycle") out.sort((a, b) => txt(a.Lifecycle).localeCompare(txt(b.Lifecycle)) || tie(a, b));
+    else out.sort(tie);
+    return out;
+}
+
 function renderInventory() {
-    const rows = DATA.sources.filter(matches);
+    const rows = sortRows(DATA.sources.filter(matches));
     const fields = ["Authority", "Lifecycle", "Relevance", "Change"];
     const active = Object.values(FILTERS).some((v) => v && v.size) || Q;
 
     $("#p-inventory").innerHTML = `
     <div class="toolbar">
       <div class="searchrow">
-      <div class="searchrow">
         <label class="sr-only" for="q">Search sources</label>
         <input type="search" id="q" aria-describedby="qcount"
                placeholder="Search id, file name, claims, limitations, owner…" value="${h(Q)}" />
+        <label class="sr-only" for="sort">Sort sources</label>
+        <select id="sort" title="Sort">
+          ${SORTS.map((s) => '<option value="' + s.k + '"' + (SORT === s.k ? " selected" : "") + ">" + h(s.label) + "</option>").join("")}
+        </select>
         <span class="count" id="qcount" role="status">${rows.length} of ${DATA.sources.length}</span>
         <button class="btn" id="clear" type="button"${active ? "" : " disabled"}>Clear all</button>
       </div>
@@ -628,6 +670,10 @@ function renderInventory() {
         nq.focus();
         nq.setSelectionRange(pos, pos);
     }, 160);
+    $("#sort").onchange = (e) => {
+        SORT = e.target.value;
+        renderInventory();
+    };
     $("#clear").onclick = () => {
         Q = "";
         FILTERS = {};

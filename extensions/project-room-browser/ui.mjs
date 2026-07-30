@@ -153,13 +153,20 @@ code, pre, .mono { font-family: var(--font-mono, ui-monospace, SFMono-Regular, M
 }
 a { color: var(--cp-link); }
 
-#app { display: grid; grid-template-columns: 224px 1fr; height: 100vh; }
-@media (max-width: 820px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } }
+/* A side panel spends most of its life between 400 and 900px, so the sidebar has
+   to survive that range rather than collapse inside it. Collapsing at 820px meant
+   it was almost never a sidebar, and it dumped the rail's footer -- "Change
+   room", a rare secondary action -- into the middle of the content as a
+   full-width button. */
+#app { display: grid; grid-template-columns: 188px minmax(0, 1fr); height: 100vh; }
+@media (max-width: 520px) {
+  #app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+}
 
 /* ---------- rail ---------- */
 .rail {
   border-right: 1px solid var(--cp-border); background: var(--cp-bg-elevated);
-  padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto;
+  padding: 14px 10px; display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow-y: auto;
 }
 .rail .room { padding: 0 8px 14px; }
 .rail .room h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: -.01em; word-break: break-word; }
@@ -173,11 +180,19 @@ a { color: var(--cp-link); }
 .rail button.nav:hover { background: var(--cp-surface-soft); color: var(--cp-text); }
 .rail button.nav[aria-current="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); font-weight: 600; }
 .rail button.nav .n { font-size: 11.5px; opacity: .85; font-variant-numeric: tabular-nums; }
-.rail .foot { margin-top: auto; padding: 12px 8px 0; }
-.rail .foot .btn.switch { width: 100%; font-size: 12px; padding: 6px 10px; margin-bottom: 8px; }
+.rail .foot { margin-top: auto; padding: 10px 4px 0; border-top: 1px solid var(--cp-border); }
+/* Quiet by design: changing room is rare, and it used to read as the loudest
+   control on the page once the rail collapsed. */
+.rail .foot .btn.switch {
+  width: 100%; font-size: 11.5px; padding: 5px 8px; margin-bottom: 6px;
+  background: transparent; border-color: transparent; color: var(--ui-muted); font-weight: 400;
+}
+.rail .foot .btn.switch:hover { background: var(--cp-surface-soft); color: var(--cp-text); }
+/* One line, not a wall of path. The full value stays in the title attribute. */
 .rail .foot .rootpath {
-  font-size: 10.5px; color: var(--ui-muted); word-break: break-all;
-  font-family: Consolas, "Courier New", Courier, monospace; line-height: 1.4;
+  font-size: 10px; color: var(--ui-muted); line-height: 1.3;
+  font-family: var(--font-code, Consolas, monospace);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
 }
 
 /* ---------- main ---------- */
@@ -244,13 +259,40 @@ table.kv tr:last-child td { border-bottom: none; }
 .dot.bad { background: var(--cp-danger); }
 .dot.ok { background: var(--cp-success); }
 
+/* Under 520px the rail becomes a horizontal tab strip. Stacking five full-width
+   rows cost ~340px of vertical space before any content appeared. */
+@media (max-width: 520px) {
+  .rail {
+    flex-direction: row; align-items: center; gap: 2px;
+    border-right: none; border-bottom: 1px solid var(--cp-border);
+    padding: 6px 8px; overflow-x: auto; overflow-y: hidden;
+  }
+  .rail .room { padding: 0 8px 0 2px; flex: 0 0 auto; max-width: 34vw; }
+  .rail .room h1 { font-size: 12.5px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail .room .sub { display: none; }
+  .rail button.nav { width: auto; flex: 0 0 auto; padding: 5px 9px; gap: 5px; }
+  .rail .foot {
+    margin-top: 0; margin-left: auto; padding: 0 0 0 8px;
+    border-top: none; border-left: 1px solid var(--cp-border);
+    display: flex; align-items: center; flex: 0 0 auto;
+  }
+  .rail .foot .btn.switch { width: auto; margin: 0; white-space: nowrap; }
+  .rail .foot .rootpath { display: none; }
+}
+
 /* ---------- inventory ---------- */
-.invwrap { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.05fr); min-height: 0; flex: 1; }
+.invwrap { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr); min-height: 0; flex: 1; }
 .invwrap.solo { grid-template-columns: 1fr; }
+/* Declared here, above the responsive block below, because a later declaration
+   of equal specificity silently overrides a media query. This rule used to sit
+   further down the file and pinned the tree to 320px at every width -- the
+   collapse rule never won. */
+.filewrap { display: grid; grid-template-columns: minmax(0, 30%) minmax(0, 1fr); min-height: 0; flex: 1; }
 .backbar { display: none; }
-/* Below 1100px the two panes swap instead of one being hidden, so a selected
-   row always has somewhere to go. */
-@media (max-width: 1100px) {
+/* Below this the two panes swap instead of sitting side by side, so a selected
+   row always has somewhere to go. Kept low: a side panel is usually 400-900px,
+   and collapsing at 1100 meant it was never actually two panes. */
+@media (max-width: 720px) {
   .invwrap, .filewrap { grid-template-columns: 1fr; }
   .invwrap .list, .invwrap .detail,
   .filewrap .tree, .filewrap .viewer { grid-column: 1; grid-row: 1; }
@@ -335,7 +377,6 @@ input[type="search"] { flex: 1; min-width: 0; }
 .btn[disabled]:hover { border-color: var(--cp-border); color: var(--cp-text); }
 
 /* ---------- files ---------- */
-.filewrap { display: grid; grid-template-columns: minmax(0,320px) minmax(0,1fr); min-height: 0; flex: 1; }
 .tree { overflow-y: auto; border-right: 1px solid var(--cp-border); padding: 10px; }
 .tree .grp { font-size: 11.5px; color: var(--ui-muted); padding: 10px 8px 5px; display: flex; justify-content: space-between; }
 .tree .f {
