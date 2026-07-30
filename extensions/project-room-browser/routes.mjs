@@ -53,7 +53,7 @@ export async function handleRequest(state, req, res) {
                 themeName: t.name,
                 variant: t.variant,
                 contrastLevel: t.contrastLevel,
-                lowContrast: t.lowContrast,
+                denseUiCaution: t.denseUiCaution,
                 names: await themeNames(),
                 defaults: DEFAULT_THEME,
             });
@@ -86,7 +86,7 @@ export async function handleRequest(state, req, res) {
                     themeName: t.name,
                     variant: t.variant,
                     contrastLevel: t.contrastLevel,
-                    lowContrast: t.lowContrast,
+                    denseUiCaution: t.denseUiCaution,
                     css: themeCss(t),
                 });
             } catch (e) {

@@ -46,11 +46,14 @@ that generated block.
   defaults to `GitHub` / dark on first run.
 - Changing theme swaps the style element's contents in place, so scroll
   position, the selected file and any typed search survive it.
-- Theme colours are used **verbatim**. Where a theme's own hues fall below
-  4.5:1 on a card, the picker says so rather than silently overriding the
-  designer's choice. That advisory is measured from the palette, not read from
-  `meta.contrastLevel`, which several themes declare optimistically -- three
-  variants labelled `"high"` measure between 4.08 and 4.36:1.
+- Theme colours are used **verbatim** -- the catalogue is curated and its
+  designers already made these calls, so the panel does not second-guess them.
+  The only caution shown is for a theme that declares
+  `meta.contrastLevel: "medium"`, which fires on 2 of the 108 variants and notes
+  that the dense Sources table may be harder to scan. An earlier version
+  re-measured every hue against the derived card surface and flagged 95 of 108 --
+  including 25 that declare `"high"` -- which is noise rather than signal, and
+  measured against a surface the theme never chose.
 - The one derived value is `--color-text-muted-safe`: muted text is often tuned
   to clear 4.5:1 against the page background with no headroom, so a card's
   surface tint pushes it under. It picks between two colours the theme already

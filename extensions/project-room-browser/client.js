@@ -1434,13 +1434,13 @@ function paintThemeControls() {
     });
     const w = $("#themewarn");
     if (w) {
-        const n = (THEME.lowContrast || []).length;
-        // Advisory, never a block: the theme's own colours are used as chosen.
-        // Measured here rather than read from meta.contrastLevel, which several
-        // themes declare optimistically.
-        w.hidden = n === 0;
-        if (!n) w.textContent = "";
-        else w.textContent = n + " colour" + (n === 1 ? "" : "s") + " in this theme fall below 4.5:1 on its background. Readable at a glance, harder in dense tables.";
+        // Advisory, never a block, and it follows the theme's own declared
+        // contrast level rather than re-measuring its palette against a surface
+        // we derived. Fires on 2 of 108 catalogue variants.
+        w.hidden = !THEME.denseUiCaution;
+        w.textContent = THEME.denseUiCaution
+            ? "This theme is tuned for lower contrast. Fine to read at a glance; the dense Sources table may be harder."
+            : "";
     }
 }
 
@@ -1450,7 +1450,7 @@ async function setTheme(next) {
         const j = await r.json();
         if (!j.ok) return announce("Could not apply theme: " + (j.error || "unknown"));
         applyThemeCss(j.css);
-        THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, lowContrast: j.lowContrast };
+        THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, denseUiCaution: j.denseUiCaution };
         paintThemeControls();
         announce("Theme set to " + j.themeName + " " + j.variant);
     } catch (e) {
@@ -1465,7 +1465,7 @@ async function wireTheme() {
         try {
             const j = await (await api("/api/theme")).json();
             if (!j.ok) return;
-            THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, lowContrast: j.lowContrast, names: j.names, defaults: j.defaults };
+            THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, denseUiCaution: j.denseUiCaution, names: j.names, defaults: j.defaults };
         } catch (e) {
             return;
         }
