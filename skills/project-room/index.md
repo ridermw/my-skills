@@ -23,8 +23,10 @@ produce the summary tier.
    the inbox drained; else record the inbox path. State which you did.
 6. Regenerate `source_inventory.csv` (identical columns/order). **If any new
    source is a chat/meeting capture, register it in `chat-index.md` under its
-   `chat_id`** (creating that file if the room has none) with its coverage window
-   and completeness — an unregistered capture makes a covered thread look stale.
+   `chat_id`** with its coverage window and completeness — an unregistered
+   capture makes a covered thread look stale. If the room has no chat index yet,
+   create it using the canonical shape in `SKILL.md` ("Conversation index");
+   inventing a different layout makes the index unreadable to everything else.
 7. **Duplicate/version pass (mandatory):** scan for exact duplicates, likely
    duplicates, and version families. Propose which is current and why. Delete
    nothing; record in `duplicate_log.md`.

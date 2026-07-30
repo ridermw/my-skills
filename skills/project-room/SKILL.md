@@ -21,10 +21,15 @@ everything.
 
 ## Install (for whoever adopts this skill)
 
-Drop this single file at your tool's skills path as `project-room/SKILL.md`:
-- GitHub Copilot CLI → `~/.copilot/skills/project-room/SKILL.md`
-- Claude Code → `~/.claude/skills/project-room/SKILL.md`
-- Cursor / others → your skills directory, as `project-room/SKILL.md`
+Copy the **whole `project-room/` folder** to your tool's skills path. The
+operation files beside this one (`index.md`, `draft.md`, `refresh.md`,
+`new-room.md`, `archive.md`) are loaded on demand, so copying `SKILL.md` alone
+leaves the skill unable to run any operation:
+- GitHub Copilot CLI → `~/.copilot/skills/project-room/`
+- Claude Code → `~/.claude/skills/project-room/`
+- Cursor / others → your skills directory, as `project-room/`
+
+Markdown only — nothing to build or install.
 
 Optional: set `PROJECT_ROOMS_DIR` to choose where rooms live (default
 `~/project-rooms`). Nothing else to configure.
@@ -158,6 +163,39 @@ independent corroboration. When a room holds any chat/meeting source, keep
 - **Every conversation source in the inventory must be registered here.** The two
   disagreeing is a defect: the inventory is authoritative for what *exists*, the
   chat index for what it *covers*.
+
+**Canonical shape.** Write it exactly like this, so any reader — human or tool —
+can parse it. Headings, the `#` ordinal, and the table headers are the contract:
+
+```markdown
+## Quick map
+
+| # | `chat_id` | Conversation | Type | Sources | Fully captured? |
+|---|---|---|---|---|---|
+| 1 | `19:...@unq.gbl.spaces` | Name | 1:1 | `S004`, `S021` | ❌ |
+
+## 1 · Name — 1:1
+
+chat_id: `19:...@unq.gbl.spaces`
+**Participants:** ...
+**Why it matters:** ...
+
+| Source | File | Captured | Coverage | Msgs | Complete |
+|---|---|---|---|---|---|
+| `S004` | 00_originals/x.json | 2026-07-15 | a → b | 50 | ❌ nextLink not followed |
+
+## Known gaps
+
+| Gap | Detail |
+|---|---|
+| ... | ... |
+```
+
+The `#` in the quick map is the same ordinal as its `## N ·` section, but
+`chat_id` is the identity — join on the id, and treat the two disagreeing as a
+defect to report rather than silently resolve. For a recurring meeting, add a
+per-occurrence table whose first column is the date and whose remaining columns
+are the artifact types tracked for it.
 
 ## Step 0 — Resolve the base folder and room
 

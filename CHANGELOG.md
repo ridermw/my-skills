@@ -23,6 +23,15 @@ All notable changes to the skills in this repo.
     objections the verbatim transcript records).
 
 ### Changed
+- **`project-room`** — install now copies the whole `project-room/` folder. The
+  split made the operation files load-bearing, but the install text still said
+  "drop this single file", which would have left the skill unable to run Index,
+  Draft, Refresh, New room or Archive. Reported in review of #6.
+- **`project-room`** — the conversation index now specifies a canonical markdown
+  shape (quick map, numbered per-conversation sections, capture table, known
+  gaps) rather than only naming the fields. Two agents following the old wording
+  could each produce a valid-looking index that nothing else could read.
+  Reported in review of #6.
 - **`project-room`** — split into `SKILL.md` plus one markdown file per
   operation (`index.md`, `draft.md`, `refresh.md`, `new-room.md`,
   `archive.md`), loaded on demand. `SKILL.md` keeps the principles, room
