@@ -172,7 +172,7 @@ can parse it. Headings, the `#` ordinal, and the table headers are the contract:
 
 | # | `chat_id` | Conversation | Type | Sources | Fully captured? |
 |---|---|---|---|---|---|
-| 1 | `19:...@unq.gbl.spaces` | Name | 1:1 | `S004`, `S021` | ❌ |
+| 1 | `19:...@unq.gbl.spaces` | Name | 1:1 | `MEMO-S004`, `MEMO-S021` | ❌ |
 
 ## 1 · Name — 1:1
 
@@ -182,7 +182,7 @@ chat_id: `19:...@unq.gbl.spaces`
 
 | Source | File | Captured | Coverage | Msgs | Complete |
 |---|---|---|---|---|---|
-| `S004` | 00_originals/x.json | 2026-07-15 | a → b | 50 | ❌ nextLink not followed |
+| `MEMO-S004` | 00_originals/x.json | 2026-07-15 | a → b | 50 | ❌ nextLink not followed |
 
 ## Known gaps
 
@@ -190,6 +190,10 @@ chat_id: `19:...@unq.gbl.spaces`
 |---|---|
 | ... | ... |
 ```
+
+Write Source IDs in the room's own form — bare `S###`, or `<PREFIX>-S###` when
+`room.yaml` sets an `id_prefix` (as above). The id here must match the inventory
+row verbatim; a shortened copy is a different identifier.
 
 The `#` in the quick map is the same ordinal as its `## N ·` section, but
 `chat_id` is the identity — join on the id, and treat the two disagreeing as a
