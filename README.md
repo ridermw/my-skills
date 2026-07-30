@@ -18,6 +18,14 @@ external setup — so you can drop it into your tool's skills directory and go.
 | [`plan-exit-review`](skills/plan-exit-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Bounded, interactive engineering-readiness review of a plan before coding: scope challenge → architecture → code → tests → performance, with recommendation-first questions. Review only. |
 | [`plan-mega-review`](skills/plan-mega-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Maximum-rigor review for high-risk/cross-cutting plans (EXPANSION / HOLD / REDUCTION): system audit, failure-mode registry, threat model, observability + deploy. Review only. |
 
+## Extensions
+
+One optional extra lives outside `skills/`:
+[`extensions/project-room-browser`](extensions/project-room-browser/) — a Copilot
+CLI **canvas** that browses a `project-room` folder (inventory, drift signals,
+Teams conversation coverage, files). It is JavaScript, not a portable skill, and
+is kept in this repo so it stays in step with the skill whose rules it reads.
+
 ## Install
 
 Each skill is a folder under `skills/`. Install one by copying (or symlinking)

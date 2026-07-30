@@ -5,6 +5,17 @@ All notable changes to the skills in this repo.
 ## [Unreleased]
 
 ### Added
+- **`extensions/project-room-browser`** — a Copilot CLI canvas that browses a
+  project room: validity and drift signals, the faceted source inventory, room
+  docs, files, and a Teams page showing per-conversation coverage. Read-only and
+  credential-free — its action buttons generate an instruction naming the
+  relevant `project-room` operation file rather than restating the procedure, so
+  the skill stays the single source of truth. Room content is escaped in the UI
+  and quoted inside a labelled untrusted-data block in every generated prompt.
+  Colours come entirely from the host app's theme variables, so the panel follows
+  the app's theme automatically; the stylesheet contains no colour literals.
+
+### Added
 - **`project-room`** — a **conversation index** for rooms that hold chats or
   meetings. The inventory records one row per *file*, but a chat thread or
   meeting series is a *conversation*: one thread yields many captures over time,
