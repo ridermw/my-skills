@@ -32,6 +32,30 @@ open the project-room canvas for ~/project-rooms/<room>
 | **Teams** | One card per *conversation*: coverage age, partial captures, missing per-occurrence artifacts, known gaps, and captures the inventory holds but the chat index never registered. |
 | **Files** | Every file in the room, with markdown/CSV rendered and images previewed. |
 
+## Theming
+
+The panel has no palette of its own. It reads the canvas theme catalogue
+(`themes.json`, 54 themes x light/dark) and the active theme's colours are
+injected server-side into `<style id="canvas-theme">` as two layers: the raw
+palette, then the semantic tokens (`--color-*`, `--severity-*`) that the
+application CSS is allowed to use. There are **zero colour literals** outside
+that generated block.
+
+- Pick a theme from the rail. The choice persists per-user at
+  `$COPILOT_HOME/extensions/project-room-browser/artifacts/theme.json`, and
+  defaults to `GitHub` / dark on first run.
+- Changing theme swaps the style element's contents in place, so scroll
+  position, the selected file and any typed search survive it.
+- Theme colours are used **verbatim**. Where a theme's own hues fall below
+  4.5:1 on a card, the picker says so rather than silently overriding the
+  designer's choice. That advisory is measured from the palette, not read from
+  `meta.contrastLevel`, which several themes declare optimistically -- three
+  variants labelled `"high"` measure between 4.08 and 4.36:1.
+- The one derived value is `--color-text-muted-safe`: muted text is often tuned
+  to clear 4.5:1 against the page background with no headroom, so a card's
+  surface tint pushes it under. It picks between two colours the theme already
+  defines (muted, else the theme's foreground) rather than inventing a third.
+
 ## Read-only, by design
 
 The canvas never writes to the room and holds no credentials. Its action

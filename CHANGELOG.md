@@ -32,6 +32,18 @@ All notable changes to the skills in this repo.
   inside a labelled untrusted-data block in every generated prompt.
 
 ### Changed
+- **`extensions/project-room-browser`** — adopts the canvas theme contract
+  instead of shipping its own palette. The active theme's colours are injected
+  server-side as raw + semantic token layers, and the stylesheet now contains
+  zero colour literals. Adds a 54-theme picker with light/dark variants and a
+  reset, persisted per-user; switching theme swaps the style element in place so
+  scroll position and selection survive. Theme colours are used verbatim — a
+  low-contrast theme produces an advisory rather than a silent override — and
+  that advisory is measured from the palette against a card surface, because
+  `meta.contrastLevel` proved unreliable (three variants declaring `"high"`
+  measure 4.08–4.36:1). Contrast across all five pages: 0 failures on
+  GitHub/dark, and the remainder on GitHub/light are the theme's own hues,
+  reported rather than repainted.
 - **`project-room`** — split into `SKILL.md` plus one markdown file per
   operation (`index.md`, `draft.md`, `refresh.md`, `new-room.md`,
   `archive.md`), loaded on demand. `SKILL.md` keeps the principles, room

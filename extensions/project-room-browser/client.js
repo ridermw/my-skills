@@ -229,10 +229,17 @@ function render() {
       <button class="nav" type="button" role="tab" id="tab-files" aria-controls="p-files" data-v="files" aria-selected="${VIEW === "files"}" aria-current="${VIEW === "files"}">
         <span>Files</span><span class="n">${d.files.length}</span></button>
       <div class="foot">
-        <div class="seg" id="themeseg" role="radiogroup" aria-label="Colour theme">
-          <button class="seg-o" type="button" role="radio" data-theme-choice="auto"  aria-checked="false">Auto</button>
-          <button class="seg-o" type="button" role="radio" data-theme-choice="light" aria-checked="false">Light</button>
-          <button class="seg-o" type="button" role="radio" data-theme-choice="dark"  aria-checked="false">Dark</button>
+        <div class="themebox">
+          <label class="tlbl" for="themesel">Theme</label>
+          <select class="tsel" id="themesel" aria-label="Colour theme"></select>
+          <div class="trow">
+            <div class="seg" id="themevar" role="radiogroup" aria-label="Theme variant">
+              <button class="seg-o" type="button" role="radio" data-variant="light" aria-checked="false">Light</button>
+              <button class="seg-o" type="button" role="radio" data-variant="dark" aria-checked="false">Dark</button>
+            </div>
+            <button class="tlink" id="themereset" type="button">Reset</button>
+          </div>
+          <p class="twarn" id="themewarn" hidden></p>
         </div>
         <button class="btn switch" id="switchroom" type="button">Change room…</button>
         <div class="rootpath" title="${h(d.root)}">${h(d.root)}</div>
@@ -252,9 +259,9 @@ function render() {
             announce(b.innerText.replace(/\s+/g, " ").trim() + " view");
         };
     });
+    wireTheme();
     const sw = $("#switchroom");
     if (sw) sw.onclick = () => { BROWSE = null; renderPicker(""); };
-    wireThemeToggle();
     if (VIEW === "overview") renderOverview();
     if (VIEW === "inventory") renderInventory();
     if (VIEW === "review") renderReview();
@@ -1394,59 +1401,75 @@ function debounce(fn, ms) {
 }
 
 /* ---------------- theme ---------------- */
-/* Theme control: an explicit 3-way choice, not a blind cycle.
-   "Auto" clears the stored preference and follows the host app's theme. */
-function syncThemeSeg() {
-    const info = (window.__themeInfo && window.__themeInfo()) || {};
-    const active = info.saved || "auto";
-    document.querySelectorAll("#themeseg .seg-o").forEach((b) => {
-        const on = b.dataset.themeChoice === active;
+/* ---------------- theme ---------------- */
+
+let THEME = null;
+
+/** Swap the generated :root block in place. No reload, so scroll position,
+ *  the selected file and any typed search all survive a theme change. */
+function applyThemeCss(css) {
+    const el = document.getElementById("canvas-theme");
+    if (el && css) el.textContent = css;
+}
+
+function paintThemeControls() {
+    if (!THEME) return;
+    const sel = $("#themesel");
+    if (sel && sel.value !== THEME.themeName) sel.value = THEME.themeName;
+    document.querySelectorAll("#themevar .seg-o").forEach((b) => {
+        const on = b.dataset.variant === THEME.variant;
         b.setAttribute("aria-checked", on ? "true" : "false");
         b.tabIndex = on ? 0 : -1;
     });
-    const seg = document.querySelector("#themeseg");
-    if (seg) {
-        seg.title =
-            active === "auto"
-                ? "Following the app theme" + (info.current ? " (" + info.current + ")" : "") + " \u2014 shortcut: T"
-                : "Theme pinned to " + active + " \u2014 shortcut: T";
+    const w = $("#themewarn");
+    if (w) {
+        const n = (THEME.lowContrast || []).length;
+        // Advisory, never a block: the theme's own colours are used as chosen.
+        // Measured here rather than read from meta.contrastLevel, which several
+        // themes declare optimistically.
+        w.hidden = n === 0;
+        if (!n) w.textContent = "";
+        else w.textContent = n + " colour" + (n === 1 ? "" : "s") + " in this theme fall below 4.5:1 on its background. Readable at a glance, harder in dense tables.";
     }
 }
-function setTheme(choice) {
-    if (window.__setTheme) window.__setTheme(choice === "auto" ? null : choice);
-    syncThemeSeg();
-    const info = (window.__themeInfo && window.__themeInfo()) || {};
-    announce(choice === "auto" ? "Theme follows the app" + (info.current ? ", currently " + info.current : "") : "Theme set to " + choice);
+
+async function setTheme(next) {
+    try {
+        const r = await fetch("/api/set-theme", { method: "POST", body: JSON.stringify(next) });
+        const j = await r.json();
+        if (!j.ok) return announce("Could not apply theme: " + (j.error || "unknown"));
+        applyThemeCss(j.css);
+        THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, lowContrast: j.lowContrast };
+        paintThemeControls();
+        announce("Theme set to " + j.themeName + " " + j.variant);
+    } catch (e) {
+        announce("Could not apply theme");
+    }
 }
-function wireThemeToggle() {
-    const seg = document.querySelector("#themeseg");
-    if (!seg) return;
-    seg.querySelectorAll(".seg-o").forEach((b) => {
-        b.onclick = () => setTheme(b.dataset.themeChoice);
+
+async function wireTheme() {
+    const sel = $("#themesel");
+    if (!sel) return;
+    if (!THEME) {
+        try {
+            const j = await (await fetch("/api/theme")).json();
+            if (!j.ok) return;
+            THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, lowContrast: j.lowContrast, names: j.names, defaults: j.defaults };
+        } catch (e) {
+            return;
+        }
+    }
+    if (!sel.options.length && THEME.names) {
+        sel.innerHTML = THEME.names.map((n) => '<option value="' + h(n) + '">' + h(n) + "</option>").join("");
+    }
+    sel.onchange = () => setTheme({ themeName: sel.value, variant: THEME.variant });
+    document.querySelectorAll("#themevar .seg-o").forEach((b) => {
+        b.onclick = () => setTheme({ themeName: THEME.themeName, variant: b.dataset.variant });
     });
-    // Arrow-key roving focus, per the radiogroup pattern.
-    seg.onkeydown = (e) => {
-        const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
-        if (!keys.includes(e.key)) return;
-        e.preventDefault();
-        const opts = [...seg.querySelectorAll(".seg-o")];
-        const i = opts.findIndex((b) => b.getAttribute("aria-checked") === "true");
-        const d = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 1;
-        const n = opts[(i + d + opts.length) % opts.length];
-        setTheme(n.dataset.themeChoice);
-        n.focus();
-    };
-    syncThemeSeg();
+    const rst = $("#themereset");
+    if (rst) rst.onclick = () => setTheme(THEME.defaults || { themeName: "GitHub", variant: "dark" });
+    paintThemeControls();
 }
-document.addEventListener("keydown", (e) => {
-    if (e.key && e.key.toLowerCase() === "t" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const tag = (e.target && e.target.tagName) || "";
-        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) return;
-        const info = (window.__themeInfo && window.__themeInfo()) || {};
-        const order = ["auto", "light", "dark"];
-        setTheme(order[(order.indexOf(info.saved || "auto") + 1) % 3]);
-    }
-});
 
 /* ---------------- picker ---------------- */
 let BROWSE = null;

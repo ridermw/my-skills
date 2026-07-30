@@ -1,234 +1,95 @@
 // The canvas UI: a single self-contained HTML document.
 // Data arrives from the extension's local API, so this file is pure rendering.
 
-export function renderShell({ roomPath, roomName }) {
+export function renderShell({ roomPath, roomName, themeCss = "", theme = null }) {
     return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(roomName || "Project room")}</title>
-<script>
-  (() => {
-    // Theme priority:
-    //   1. explicit ?clawpilotTheme= override
-    //   2. the HOST app's theme, read from the canvas theme contract variables
-    //      it injects (--background-color-default / --text-color-default)
-    //   3. the OS preference, only as a last resort
-    // Reading prefers-color-scheme first was the bug: it reports the OS
-    // setting, so a light app theme on a dark OS rendered a dark canvas.
-    const root = document.documentElement;
-
-    const lum = (css) => {
-      if (!css) return null;
-      const m = css.match(/-?[0-9.]+/g);
-      if (!m || m.length < 3) return null;
-      const [r, g, b] = m.slice(0, 3).map(Number);
-      if ([r, g, b].some((n) => Number.isNaN(n))) return null;
-      const f = (c) => {
-        c = c / 255;
-        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-      };
-      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-    };
-
-    // Resolve a var() to a real colour by letting the browser compute it.
-    // The probe must hang off <body> when it exists: hosts commonly define
-    // their theme variables on body or a wrapper, not on :root, and a probe
-    // attached to documentElement would never see them.
-    const resolve = (expr) => {
-      const host = document.body || root;
-      const probe = document.createElement("span");
-      probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;color:" + expr;
-      host.appendChild(probe);
-      const v = getComputedStyle(probe).color;
-      probe.remove();
-      return v;
-    };
-
-    const HOST_BG_VARS = [
-      "--background-color-default",
-      "--bgColor-default",
-      "--color-canvas-default",
-    ];
-
-    // NOTE: never read the color-scheme property as a host signal. This
-    // stylesheet sets it on :root itself, so reading it back returns our own
-    // default and pins the theme regardless of the host. That was a real bug.
-    function hostTheme() {
-      try {
-        const scopes = [root, document.body].filter(Boolean);
-        for (const name of HOST_BG_VARS) {
-          const declared = scopes.some((el) => getComputedStyle(el).getPropertyValue(name).trim() !== "");
-          if (!declared) continue;
-          const L = lum(resolve("var(" + name + ")"));
-          if (L != null) return L < 0.5 ? "dark" : "light";
-        }
-        // An explicit colour-mode attribute from the host is trustworthy.
-        for (const el of scopes) {
-          const mode = (el.getAttribute && el.getAttribute("data-color-mode")) || "";
-          if (/dark/i.test(mode)) return "dark";
-          if (/light/i.test(mode)) return "light";
-        }
-      } catch (e) {
-        /* fall through to the OS preference */
-      }
-      return null;
-    }
-
-    const STORE = "projectRoomTheme";
-    function savedTheme() {
-      try {
-        const v = localStorage.getItem(STORE);
-        return v === "light" || v === "dark" ? v : null;
-      } catch (e) {
-        return null;
-      }
-    }
-    window.__setTheme = (t) => {
-      try {
-        if (t) localStorage.setItem(STORE, t);
-        else localStorage.removeItem(STORE);
-      } catch (e) {
-        /* private mode */
-      }
-      apply();
-    };
-    window.__themeInfo = () => ({ saved: savedTheme(), host: hostTheme(), current: root.getAttribute("data-theme") });
-
-    function apply() {
-      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
-      const theme =
-        savedTheme() ||
-        param ||
-        hostTheme() ||
-        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-      if (root.getAttribute("data-theme") !== theme) root.setAttribute("data-theme", theme);
-    }
-
-    // A single shot at DOM-ready is not enough: <body> does not exist while
-    // this runs in <head>, and a host may inject its palette asynchronously.
-    // Re-detect on a short decaying schedule until a host variable appears.
-    let settled = false;
-    function applyUntilHostSeen() {
-      const found = hostTheme() != null;
-      apply();
-      if (found) settled = true;
-      return settled;
-    }
-    applyUntilHostSeen();
-    if (!settled) {
-      let tries = 0;
-      const timer = setInterval(() => {
-        if (applyUntilHostSeen() || ++tries > 40) clearInterval(timer);
-      }, 50);
-      document.addEventListener("DOMContentLoaded", applyUntilHostSeen, { once: true });
-      window.addEventListener("load", applyUntilHostSeen, { once: true });
-    }
-    // The host can switch theme while the canvas is open, so keep watching.
-    const mo = new MutationObserver(apply);
-    mo.observe(root, { attributes: true, attributeFilter: ["style", "class", "data-color-mode", "data-theme"] });
-    document.addEventListener("DOMContentLoaded", () => {
-      if (document.body) mo.observe(document.body, { attributes: true, attributeFilter: ["style", "class", "data-color-mode", "data-theme"] });
-    }, { once: true });
-    window.addEventListener("focus", apply);
-    try {
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", apply);
-    } catch (e) {
-      /* older engines */
-    }
-  })();
-</script>
+<style id="canvas-theme">${themeCss}</style>
 <style>
 /* THEME RULE -- do not violate:
    Host variables (--background-color-default / --text-color-default) are read in JS
    for DETECTION ONLY, to choose light vs dark. They must NEVER appear as token values.
    Mixing a host-supplied background with our own hardcoded surfaces produced a light
    page with dark controls and unreadable text. Each palette below is self-contained. */
+/* Alias layer.
+   Every colour below resolves to a semantic token from <style id="canvas-theme">,
+   which the server generates from the active theme. Nothing here invents a
+   colour, so the panel is whatever theme the user picked -- nothing else. */
 :root {
-  color-scheme: light;
-  --cp-bg: #f7f4ef;
-  --cp-bg-elevated: #fcfbf8;
-  --cp-surface: #ffffff;
-  --cp-surface-soft: #f5f5f5;
-  --cp-border: #dedede;
-  --cp-border-strong: #919191;
-  --cp-text: #242424;
-  --cp-text-muted: #5c5c5c;
-  --cp-text-soft: #6f6f6f;
-  --cp-accent: #b11f4b;
-  --cp-accent-hover: #9a1a41;
-  --cp-accent-soft: rgba(177, 31, 75, 0.08);
-  --cp-accent-fg: #ffffff;
-  --cp-success: #16a34a;
-  --cp-danger: #dc2626;
-  --cp-warning: #f59e0b;
-  --cp-link: #0078d4;
-  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
-  --cp-overlay: rgba(255, 255, 255, 0.8);
-  --cp-panel: rgba(255, 255, 255, 0.86);
-  --cp-panel-strong: rgba(255, 255, 255, 0.96);
-  --cp-sheen: rgba(255, 255, 255, 0.55);
-  --cp-highlight: rgba(177, 31, 75, 0.12);
-  /* ink tones: verified >=4.5:1 on bg / surface / surface-soft */
-  --ink-blue: #0b62ab;
-  --ink-green: #0f6b32;
-  --ink-amber: #8a5300;
-  --ink-red: #b81d1d;
-  --ink-purple: #5c2e91;
-  --ink-gray: #5c5c5c;
-  /* small UI text: muted is fine in light, but fails 4.5:1 in dark */
-  --ui-muted: var(--cp-text-muted);
-  /* one radius scale, not six ad-hoc values */
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 10px;
-  --shadow-card: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
-  /* product register: state transitions 150-250ms, never decoration */
+  --cp-bg: var(--color-bg);
+  --cp-bg-elevated: var(--color-bg);
+  --cp-surface: var(--color-surface);
+  --cp-surface-soft: var(--color-surface-raised);
+  --cp-panel: var(--color-surface);
+  --cp-panel-strong: var(--color-active-bg);
+  --cp-overlay: var(--color-hover-bg);
+  --cp-sheen: transparent;
+  --cp-border: var(--color-border);
+  --cp-border-strong: var(--color-border-strong);
+
+  --cp-text: var(--color-fg);
+  /* Both muted aliases use the surface-safe pick: these land on cards and
+     controls, not just the page background. */
+  --cp-text-muted: var(--color-text-muted-safe, var(--color-text-muted));
+  --cp-text-soft: var(--color-text-muted-safe, var(--color-text-muted));
+  --ui-muted: var(--color-text-muted-safe, var(--color-text-muted));
+
+  --cp-accent: var(--color-accent);
+  --cp-accent-hover: var(--color-link-hover);
+  --cp-accent-soft: var(--tint-info);
+  --cp-accent-fg: var(--color-accent-fg);
+  --cp-link: var(--color-link);
+  --cp-highlight: var(--tint-info);
+
+  --cp-success: var(--severity-ok);
+  --cp-danger: var(--severity-error);
+  --cp-warning: var(--severity-warn);
+
+  --ink-blue: var(--severity-info);
+  --ink-green: var(--severity-ok);
+  --ink-amber: var(--severity-warn);
+  --ink-red: var(--severity-error);
+  --ink-purple: var(--severity-alt);
+  --ink-gray: var(--severity-muted);
+  --tint-blue: var(--tint-info);
+  --tint-green: var(--tint-ok);
+  --tint-amber: var(--tint-warn);
+  --tint-red: var(--tint-error);
+  --tint-purple: var(--tint-alt);
+  --tint-gray: var(--tint-muted);
+
+  --cp-shadow: 0 8px 24px var(--color-active-bg);
+  --shadow-card: 0 1px 0 var(--color-border);
+  --r-sm: 4px; --r-md: 6px; --r-lg: 8px;
   --t-state: 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --cp-bg: #1f1e1d;
-  --cp-bg-elevated: #262524;
-  --cp-surface: #292929;
-  --cp-surface-soft: #2e2e2e;
-  --cp-border: #474747;
-  --cp-border-strong: #5f5f5f;
-  --cp-text: #ebe9e6;
-  --cp-text-muted: #919191;
-  --cp-text-soft: #b0b0b0;
-  --cp-accent: #fd8ea1;
-  --cp-accent-hover: #fb7b91;
-  --cp-accent-soft: rgba(253, 142, 161, 0.14);
-  --cp-accent-fg: #1a1a1a;
-  --cp-success: #4ade80;
-  --cp-danger: #f87171;
-  --cp-warning: #fbbf24;
-  --cp-link: #4da6ff;
-  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
-  --cp-overlay: rgba(41, 41, 41, 0.88);
-  --cp-panel: rgba(41, 41, 41, 0.72);
-  --cp-panel-strong: rgba(41, 41, 41, 0.96);
-  --cp-sheen: rgba(255, 255, 255, 0.04);
-  --cp-highlight: rgba(253, 142, 161, 0.12);
-  --ink-blue: #7cc0ff;
-  --ink-green: #4ade80;
-  --ink-amber: #fbbf24;
-  --ink-red: #fca5a5;
-  --ink-purple: #c5b3ff;
-  --ink-gray: #b0b0b0;
-  --ui-muted: var(--cp-text-soft);
-}
+
+/* Contract extras that are easy to miss: focus affordance and scrollbars must
+   also come from theme tokens, not browser defaults. */
+:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+::selection { background: var(--color-selection-bg); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-surface); }
+::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--cp-bg); color: var(--cp-text);
-  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 14px; -webkit-font-smoothing: antialiased;
+  /* Type comes from the host contract too, so the panel matches the app's
+     typography, not just its colours. */
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-size: var(--text-body-medium, 14px);
+  line-height: var(--leading-body-medium, 20px);
+  -webkit-font-smoothing: antialiased;
 }
-code, pre, .mono { font-family: Consolas, "Courier New", Courier, monospace; }
+code, pre, .mono { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
 :where(a, button, input, select, [tabindex]):focus-visible {
   outline: 2px solid var(--cp-accent); outline-offset: 2px; border-radius: var(--r-sm);
 }
@@ -382,14 +243,18 @@ input[type="search"] { flex: 1; min-width: 0; }
 
 .badge {
   font-size: 10.5px; padding: 1px 7px; border-radius: 999px; font-weight: 600;
-  border: 1px solid currentColor; white-space: nowrap;
+  border: 1px solid currentColor; background: transparent; white-space: nowrap;
 }
+/* Outline, not filled. A tinted fill of the same hue sits between the label and
+   the page background and eats 1+ point of contrast, which several catalogue
+   themes cannot spare. The hue already carries the meaning, so the text stays on
+   the page background where the theme's own contrast guarantee holds. */
 .b-blue { color: var(--ink-blue); }
 .b-green { color: var(--ink-green); }
 .b-amber { color: var(--ink-amber); }
 .b-red { color: var(--ink-red); }
 .b-purple { color: var(--ink-purple); }
-.b-gray { color: var(--ink-gray); }
+.b-gray { color: var(--cp-text-muted); border-color: var(--cp-border); }
 
 .detail { overflow-y: auto; padding: 18px 20px 40px; }
 .detail .empty { color: var(--ui-muted); font-size: 13px; padding: 40px 0; text-align: center; }
@@ -449,7 +314,7 @@ input[type="search"] { flex: 1; min-width: 0; }
 .md p { margin: 0 0 12px; }
 .md ul, .md ol { margin: 0 0 12px; padding-left: 22px; }
 .md li { margin-bottom: 4px; }
-.md code { background: var(--cp-surface-soft); padding: 1px 5px; border-radius: var(--r-sm); font-size: 12px; }
+.md code { background: var(--cp-surface-soft); color: var(--cp-text); padding: 1px 5px; border-radius: var(--r-sm); font-size: 12px; }
 .md pre {
   background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: var(--r-md);
   padding: 12px 14px; overflow-x: auto; font-size: 12px; line-height: 1.55; margin: 0 0 14px;
@@ -493,7 +358,7 @@ input[type="search"] { flex: 1; min-width: 0; }
 .seg-o + .seg-o { border-left: 1px solid var(--cp-border); }
 .seg-o:hover { background: var(--cp-surface-soft); color: var(--cp-text); }
 .seg-o:active { background: var(--cp-panel-strong); }
-.seg-o[aria-checked="true"] { background: var(--cp-accent-soft); color: var(--cp-accent); font-weight: 600;
+.seg-o[aria-checked="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); font-weight: 600;
   box-shadow: inset 0 -2px 0 var(--cp-accent); }
 .seg-o:focus-visible { outline: 2px solid var(--cp-link); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { .seg-o { transition: none; } }
@@ -544,6 +409,10 @@ input[type="search"] { flex: 1; min-width: 0; }
 .gap .gk { font-size: 12.5px; font-weight: 600; margin: 0 0 2px; }
 .gap .gd { font-size: 12.5px; line-height: 1.55; color: var(--cp-text-soft); }
 .nav .n.warn { color: var(--ink-amber); font-weight: 600; }
+/* Inside the selected nav the accent fill owns the foreground, so a severity
+   hue there would be colour-on-colour. Inherit instead. */
+.rail button.nav[aria-current="true"] .n,
+.rail button.nav[aria-current="true"] .n.warn { color: inherit; opacity: 1; }
 .card .v.good { color: var(--ink-green); }
 .card .v.warn { color: var(--ink-amber); }
 .card .v.bad  { color: var(--ink-red); }
@@ -555,6 +424,17 @@ input[type="search"] { flex: 1; min-width: 0; }
   .theadacts { width: 100%; }
   .theadacts .btn { flex: 1 1 auto; }
 }
+/* ---- theme picker ---- */
+.themebox { display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px; }
+.tlbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ui-muted); }
+.tsel { width: 100%; font: inherit; font-size: 12px; padding: 4px 6px; border-radius: var(--r-sm);
+  border: 1px solid var(--cp-border); background: var(--cp-surface); color: var(--cp-text); }
+.trow { display: flex; gap: 6px; align-items: center; }
+.trow .seg { flex: 1 1 auto; }
+.tlink { flex: 0 0 auto; background: none; border: 0; cursor: pointer; font: inherit; font-size: 11.5px;
+  color: var(--cp-link); padding: 2px 4px; border-radius: var(--r-sm); }
+.tlink:hover { text-decoration: underline; }
+.twarn { margin: 2px 0 0; font-size: 11px; line-height: 1.45; color: var(--ink-amber); }
 .tally { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; margin: 0 6px 6px 0;
   font-size: 12px; color: var(--ui-muted); background: transparent; border: 0; border-radius: 0; }
 .tally .c { font-variant-numeric: tabular-nums; color: var(--cp-text); font-weight: 600; }

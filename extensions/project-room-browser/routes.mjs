@@ -10,6 +10,7 @@ import path from "node:path";
 import { readRoom, readRoomFile, readRoomBytes, listSiblingRooms, browseDir, suggestStartingPoints } from "./room.mjs";
 import { sweepPlan } from "./teams.mjs";
 import { renderShell } from "./ui.mjs";
+import { readTheme, writeTheme, resolveTheme, themeCss, themeNames, DEFAULT_THEME } from "./theme.mjs";
 
 export function json(res, code, body) {
     res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -23,6 +24,55 @@ export function json(res, code, body) {
 export async function handleRequest(state, req, res) {
     const url = new URL(req.url, "http://127.0.0.1");
     try {
+        if (url.pathname === "/api/theme") {
+            const choice = await readTheme();
+            const t = await resolveTheme(choice);
+            return json(res, 200, {
+                ok: true,
+                themeName: t.name,
+                variant: t.variant,
+                contrastLevel: t.contrastLevel,
+                lowContrast: t.lowContrast,
+                names: await themeNames(),
+                defaults: DEFAULT_THEME,
+            });
+        }
+
+        if (url.pathname === "/api/set-theme") {
+            // Body is tiny; read it rather than trusting the query string.
+            const body = await new Promise((resolve) => {
+                let b = "";
+                req.on("data", (c) => {
+                    b += c;
+                    if (b.length > 4096) req.destroy();
+                });
+                req.on("end", () => resolve(b));
+            });
+            let choice;
+            try {
+                choice = JSON.parse(body || "{}");
+            } catch (e) {
+                return json(res, 400, { ok: false, error: "Malformed body" });
+            }
+            try {
+                const saved = await writeTheme(choice);
+                const t = await resolveTheme(saved);
+                // Return the new :root block so the iframe can swap the style
+                // element's contents in place -- no reload, so scroll position,
+                // selection and typed input all survive.
+                return json(res, 200, {
+                    ok: true,
+                    themeName: t.name,
+                    variant: t.variant,
+                    contrastLevel: t.contrastLevel,
+                    lowContrast: t.lowContrast,
+                    css: themeCss(t),
+                });
+            } catch (e) {
+                return json(res, 400, { ok: false, error: String(e && e.message) });
+            }
+        }
+
         if (url.pathname === "/api/teams/sweep") {
             if (!state.roomPath) return json(res, 409, { ok: false, error: "No room is open." });
             const room = await readRoom(state.roomPath);
@@ -88,8 +138,18 @@ export async function handleRequest(state, req, res) {
             return res.end(js);
         }
 
+        // Theme is inlined at render time; fetching it separately would flash.
+        const choice = await readTheme();
+        const t = await resolveTheme(choice);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(renderShell({ roomPath: state.roomPath, roomName: path.basename(state.roomPath || "") }));
+        res.end(
+            renderShell({
+                roomPath: state.roomPath,
+                roomName: path.basename(state.roomPath || ""),
+                themeCss: themeCss(t),
+                theme: t,
+            })
+        );
     } catch (err) {
         json(res, 500, { ok: false, error: String(err && err.message ? err.message : err) });
     }
