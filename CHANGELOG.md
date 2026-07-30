@@ -12,8 +12,8 @@ All notable changes to the skills in this repo.
   relevant `project-room` operation file rather than restating the procedure, so
   the skill stays the single source of truth. Room content is escaped in the UI
   and quoted inside a labelled untrusted-data block in every generated prompt.
-  Colours come entirely from the canvas theme catalogue; the stylesheet contains
-  no colour literals.
+  Colours come entirely from the host app's theme variables, so the panel follows
+  the app's theme automatically; the stylesheet contains no colour literals.
 
 ### Added
 - **`project-room`** — a **conversation index** for rooms that hold chats or

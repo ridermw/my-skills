@@ -240,18 +240,6 @@ function render() {
       <button class="nav" type="button" role="tab" id="tab-files" aria-controls="p-files" data-v="files" aria-selected="${VIEW === "files"}" aria-current="${VIEW === "files"}">
         <span>Files</span><span class="n">${d.files.length}</span></button>
       <div class="foot">
-        <div class="themebox">
-          <label class="tlbl" for="themesel">Theme</label>
-          <select class="tsel" id="themesel" aria-label="Colour theme"></select>
-          <div class="trow">
-            <div class="seg" id="themevar" role="radiogroup" aria-label="Theme variant">
-              <button class="seg-o" type="button" role="radio" data-variant="light" aria-checked="false">Light</button>
-              <button class="seg-o" type="button" role="radio" data-variant="dark" aria-checked="false">Dark</button>
-            </div>
-            <button class="tlink" id="themereset" type="button">Reset</button>
-          </div>
-          <p class="twarn" id="themewarn" hidden></p>
-        </div>
         <button class="btn switch" id="switchroom" type="button">Change room…</button>
         <div class="rootpath" title="${h(d.root)}">${h(d.root)}</div>
       </div>
@@ -270,7 +258,6 @@ function render() {
             announce(b.innerText.replace(/\s+/g, " ").trim() + " view");
         };
     });
-    wireTheme();
     const sw = $("#switchroom");
     if (sw) sw.onclick = () => { BROWSE = null; renderPicker(""); };
     if (VIEW === "overview") renderOverview();
@@ -1409,77 +1396,6 @@ function debounce(fn, ms) {
         clearTimeout(t);
         t = setTimeout(() => fn(...a), ms);
     };
-}
-
-/* ---------------- theme ---------------- */
-/* ---------------- theme ---------------- */
-
-let THEME = null;
-
-/** Swap the generated :root block in place. No reload, so scroll position,
- *  the selected file and any typed search all survive a theme change. */
-function applyThemeCss(css) {
-    const el = document.getElementById("canvas-theme");
-    if (el && css) el.textContent = css;
-}
-
-function paintThemeControls() {
-    if (!THEME) return;
-    const sel = $("#themesel");
-    if (sel && sel.value !== THEME.themeName) sel.value = THEME.themeName;
-    document.querySelectorAll("#themevar .seg-o").forEach((b) => {
-        const on = b.dataset.variant === THEME.variant;
-        b.setAttribute("aria-checked", on ? "true" : "false");
-        b.tabIndex = on ? 0 : -1;
-    });
-    const w = $("#themewarn");
-    if (w) {
-        // Advisory, never a block, and it follows the theme's own declared
-        // contrast level rather than re-measuring its palette against a surface
-        // we derived. Fires on 2 of 108 catalogue variants.
-        w.hidden = !THEME.denseUiCaution;
-        w.textContent = THEME.denseUiCaution
-            ? "This theme is tuned for lower contrast. Fine to read at a glance; the dense Sources table may be harder."
-            : "";
-    }
-}
-
-async function setTheme(next) {
-    try {
-        const r = await api("/api/set-theme", { method: "POST", body: JSON.stringify(next) });
-        const j = await r.json();
-        if (!j.ok) return announce("Could not apply theme: " + (j.error || "unknown"));
-        applyThemeCss(j.css);
-        THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, denseUiCaution: j.denseUiCaution };
-        paintThemeControls();
-        announce("Theme set to " + j.themeName + " " + j.variant);
-    } catch (e) {
-        announce("Could not apply theme");
-    }
-}
-
-async function wireTheme() {
-    const sel = $("#themesel");
-    if (!sel) return;
-    if (!THEME) {
-        try {
-            const j = await (await api("/api/theme")).json();
-            if (!j.ok) return;
-            THEME = { themeName: j.themeName, variant: j.variant, contrastLevel: j.contrastLevel, denseUiCaution: j.denseUiCaution, names: j.names, defaults: j.defaults };
-        } catch (e) {
-            return;
-        }
-    }
-    if (!sel.options.length && THEME.names) {
-        sel.innerHTML = THEME.names.map((n) => '<option value="' + h(n) + '">' + h(n) + "</option>").join("");
-    }
-    sel.onchange = () => setTheme({ themeName: sel.value, variant: THEME.variant });
-    document.querySelectorAll("#themevar .seg-o").forEach((b) => {
-        b.onclick = () => setTheme({ themeName: THEME.themeName, variant: b.dataset.variant });
-    });
-    const rst = $("#themereset");
-    if (rst) rst.onclick = () => setTheme(THEME.defaults || { themeName: "GitHub", variant: "dark" });
-    paintThemeControls();
 }
 
 /* ---------------- picker ---------------- */

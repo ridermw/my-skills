@@ -1,7 +1,64 @@
 // The canvas UI: a single self-contained HTML document.
 // Data arrives from the extension's local API, so this file is pure rendering.
 
-export function renderShell({ roomPath, roomName, themeCss = "", theme = null, token = "" }) {
+const HOST_THEME_CSS = `:root {
+  /* Raw palette, aliased straight from the host's canvas theme variables. These
+     are live var() references, so when the app's theme changes the whole panel
+     re-cascades on its own -- no picker, no persistence, no reload. Fallbacks
+     apply only when this runs outside the app (serve.mjs). */
+  --bg: var(--background-color-default, #0d1117);
+  --fg: var(--text-color-default, #e6edf3);
+  --ansi-k: var(--text-color-muted, #484f58);
+  --ansi-bright-k: var(--border-color-default, #6e7681);
+  --ansi-r: var(--true-color-red, #ff7b72);
+  --ansi-bright-r: var(--true-color-red-muted, #ffa198);
+  --ansi-g: var(--true-color-green, #3fb950);
+  --ansi-bright-g: var(--true-color-green-muted, #56d364);
+  --ansi-y: var(--true-color-yellow, #d29922);
+  --ansi-bright-y: var(--true-color-yellow-muted, #e3b341);
+  --ansi-b: var(--true-color-blue, #58a6ff);
+  --ansi-bright-b: var(--true-color-blue-muted, #79c0ff);
+  --ansi-m: var(--true-color-purple, #bc8cff);
+  --ansi-bright-m: var(--true-color-purple-muted, #d2a8ff);
+  --ansi-c: var(--true-color-cyan, #39c5cf);
+  --ansi-bright-c: var(--true-color-cyan-muted, #56d4dd);
+  --ansi-w: var(--text-color-muted, #b1bac4);
+  --ansi-bright-w: var(--color-white, #f0f6fc);
+  --font-ui: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  --font-code: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+
+  /* Semantic layer -- the only thing the application stylesheet may use. */
+  --color-bg: var(--bg);
+  --color-surface: color-mix(in srgb, var(--bg) 92%, var(--fg));
+  --color-surface-raised: color-mix(in srgb, var(--bg) 86%, var(--fg));
+  --color-border: var(--border-color-default, color-mix(in srgb, var(--fg) 18%, transparent));
+  --color-border-strong: color-mix(in srgb, var(--fg) 32%, transparent);
+  --color-fg: var(--fg);
+  --color-text-muted: var(--text-color-muted, var(--ansi-w));
+  --color-text-disabled: color-mix(in srgb, var(--fg) 35%, transparent);
+  --color-accent: var(--ansi-b);
+  --color-accent-fg: var(--bg);
+  --color-link: var(--ansi-b);
+  --color-link-hover: var(--ansi-bright-b);
+  --color-focus-ring: var(--color-focus-outline, var(--ansi-bright-b));
+  --color-selection-bg: color-mix(in srgb, var(--ansi-b) 28%, transparent);
+  --color-hover-bg: color-mix(in srgb, var(--fg) 8%, transparent);
+  --color-active-bg: color-mix(in srgb, var(--fg) 14%, transparent);
+  --severity-error: var(--ansi-r);
+  --severity-warn: var(--ansi-y);
+  --severity-ok: var(--ansi-g);
+  --severity-info: var(--ansi-b);
+  --severity-muted: var(--ansi-w);
+  --severity-alt: var(--ansi-m);
+  --tint-error: color-mix(in srgb, var(--ansi-r) 15%, transparent);
+  --tint-warn: color-mix(in srgb, var(--ansi-y) 15%, transparent);
+  --tint-ok: color-mix(in srgb, var(--ansi-g) 15%, transparent);
+  --tint-info: color-mix(in srgb, var(--ansi-b) 15%, transparent);
+  --tint-alt: color-mix(in srgb, var(--ansi-m) 15%, transparent);
+  --tint-muted: color-mix(in srgb, var(--ansi-w) 15%, transparent);
+}`;
+
+export function renderShell({ roomPath, roomName, token = "" }) {
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -9,7 +66,7 @@ export function renderShell({ roomPath, roomName, themeCss = "", theme = null, t
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(roomName || "Project room")}</title>
 <meta name="canvas-token" content="${esc(token)}" />
-<style id="canvas-theme">${themeCss}</style>
+<style id="host-theme-aliases">${HOST_THEME_CSS}</style>
 <style>
 /* THEME RULE -- do not violate:
    Host variables (--background-color-default / --text-color-default) are read in JS
@@ -35,9 +92,9 @@ export function renderShell({ roomPath, roomName, themeCss = "", theme = null, t
   --cp-text: var(--color-fg);
   /* Both muted aliases use the surface-safe pick: these land on cards and
      controls, not just the page background. */
-  --cp-text-muted: var(--color-text-muted-safe, var(--color-text-muted));
-  --cp-text-soft: var(--color-text-muted-safe, var(--color-text-muted));
-  --ui-muted: var(--color-text-muted-safe, var(--color-text-muted));
+  --cp-text-muted: var(--color-text-muted);
+  --cp-text-soft: var(--color-text-muted);
+  --ui-muted: var(--color-text-muted);
 
   --cp-accent: var(--color-accent);
   --cp-accent-hover: var(--color-link-hover);

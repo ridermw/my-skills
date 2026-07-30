@@ -34,30 +34,22 @@ open the project-room canvas for ~/project-rooms/<room>
 
 ## Theming
 
-The panel has no palette of its own. It reads the canvas theme catalogue
-(`themes.json`, 54 themes x light/dark) and the active theme's colours are
-injected server-side into `<style id="canvas-theme">` as two layers: the raw
-palette, then the semantic tokens (`--color-*`, `--severity-*`) that the
-application CSS is allowed to use. There are **zero colour literals** outside
-that generated block.
+The panel has no palette and no theme picker. It aliases the host's canvas
+theme variables (`--background-color-default`, `--text-color-default`,
+`--true-color-*`, `--font-sans`, `--font-mono`) into a raw layer, then derives
+its semantic tokens (`--color-*`, `--severity-*`) from those. The application
+stylesheet uses only the semantic layer and contains **no colour literals**.
 
-- Pick a theme from the rail. The choice persists per-user at
-  `$COPILOT_HOME/extensions/project-room-browser/artifacts/theme.json`, and
-  defaults to `GitHub` / dark on first run.
-- Changing theme swaps the style element's contents in place, so scroll
-  position, the selected file and any typed search survive it.
-- Theme colours are used **verbatim** -- the catalogue is curated and its
-  designers already made these calls, so the panel does not second-guess them.
-  The only caution shown is for a theme that declares
-  `meta.contrastLevel: "medium"`, which fires on 2 of the 108 variants and notes
-  that the dense Sources table may be harder to scan. An earlier version
-  re-measured every hue against the derived card surface and flagged 95 of 108 --
-  including 25 that declare `"high"` -- which is noise rather than signal, and
-  measured against a surface the theme never chose.
-- The one derived value is `--color-text-muted-safe`: muted text is often tuned
-  to clear 4.5:1 against the page background with no headroom, so a card's
-  surface tint pushes it under. It picks between two colours the theme already
-  defines (muted, else the theme's foreground) rather than inventing a third.
+Because every token is a live `var()` reference, **the panel follows the app's
+theme automatically** — change the theme in GitHub and the whole surface
+re-cascades with no JavaScript, no reload, and no loss of scroll position or
+selection.
+
+This replaced an earlier per-canvas picker backed by a bundled 54-theme
+catalogue. That approach is deprecated across the canvas ecosystem: of the
+showcase extensions that handle theming, none still ship a picker, and several
+return `410 theme_selection_removed` from their old endpoints. Dropping it
+removed the catalogue, the persistence file, two API routes and the picker UI.
 
 ## Read-only, by design
 
