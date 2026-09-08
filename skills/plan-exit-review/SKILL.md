@@ -1,11 +1,7 @@
 ---
 name: plan-exit-review
 description: 'Bounded, interactive engineering-readiness review of a concrete implementation plan BEFORE coding — routine features, refactors, bug fixes. Challenges scope (Step 0), then reviews architecture, code quality, tests, and performance with opinionated, recommendation-first questions. Review only — does not modify code. For an exhaustive maximum-rigor security/operations/failure-mode audit of a high-risk or cross-cutting plan use plan-mega-review, and for multi-reviewer adversarial critique of an idea, decision or artifact that is not a pre-coding plan gate use adversarial-review. Triggers: "plan exit review", "review my plan before I build", "engineering readiness review", "scope challenge", "is this plan ready to implement".'
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - AskUserQuestion
+allowed-tools: Read Grep Glob AskUserQuestion
 ---
 
 # Plan Review Mode
@@ -147,7 +143,11 @@ For each TODO, describe:
 * **Context:** Enough detail that someone picking this up in 3 months understands the motivation, the current state, and where to start.
 * **Depends on / blocked by:** Any prerequisites or ordering constraints.
 
-Then present options: **A)** Add to the project's backlog (TODOS.md, issue tracker, etc.) **B)** Skip — not valuable enough **C)** Build it now instead of deferring. Only write to a backlog file if the user picks A.
+Then present options: **A)** Add to the project's backlog (TODOS.md, issue tracker, etc.) **B)** Skip — not valuable enough **C)** Include it in the current implementation plan. Only write to a backlog file if the user picks A.
+
+If C is selected, record the proposed scope addition in the review response and
+revisit affected review sections. This is scope admission, not permission to
+write implementation or plan files; implementation remains a separate task.
 
 Do NOT just append vague bullet points. A TODO without context is worse than no TODO — it creates false confidence that the idea was captured while actually losing the reasoning.
 

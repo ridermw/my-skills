@@ -1,12 +1,7 @@
 ---
 name: plan-mega-review
 description: 'Maximum-rigor, exhaustive review of a HIGH-RISK or cross-cutting implementation plan, design doc, or architecture proposal — use only when the user explicitly asks for a deep/mega/boil-the-ocean review or the change is high-blast-radius. Three modes: SCOPE EXPANSION (build the cathedral), HOLD SCOPE (bulletproof what is here), SCOPE REDUCTION (cut to essentials). Maps every failure mode, demands observability, models threats, names error and rescue paths. Review only — does not modify code. For an ordinary bounded pre-coding review use plan-exit-review, and for multi-reviewer adversarial critique of an idea, decision or artifact that is not a pre-coding plan gate use adversarial-review. Triggers: "mega plan review", "maximum rigor review", "boil the ocean review", "review this high-risk plan", "deep review before I build this".'
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - AskUserQuestion
+allowed-tools: Read Grep Glob Bash AskUserQuestion
 ---
 
 # Mega Plan Review Mode
@@ -33,11 +28,33 @@ lettered options with one-line tradeoffs) and stop for a typed reply. In a
 headless run, list unresolved decisions and stop rather than guessing. Never
 claim a tool or reviewer was used unless it actually was.
 
-**Optional independent pass (capability-gated).** If your host can launch an
-independent reviewer (a separate subagent, or a genuinely different model), you
-may run one adversarial pass and fold in its findings — but disclose what you
-actually ran, degrade cleanly if you cannot, and treat cross-model agreement as a
-recommendation, not a decision. Never claim an independent review you did not run.
+**Optional independent pass (capability-gated).** When an independent pass is
+requested, load the installed `adversarial-review` skill and use its capability,
+dynamic provider/model selection, reasoning-effort, and disclosure rules. Do
+not copy model IDs or effort settings here. Give independent reviewers the plan,
+not this review's findings, before synthesizing their results. If that optional
+skill or the required host capability is unavailable, disclose the limitation
+and continue the local review without inventing a lineup or claiming an
+independent pass. Cross-model agreement is a recommendation, not a decision.
+
+## Entry Gate: Mode Selection
+
+Resolve the mode **before the system audit, taste calibration, or any
+mode-specific analysis**. Honor an explicitly named mode. Otherwise present
+these options and STOP for the user's choice:
+
+1. **SCOPE EXPANSION:** Propose the ambitious version, then review that. Push scope up.
+2. **HOLD SCOPE:** Review the accepted scope with maximum rigor.
+3. **SCOPE REDUCTION:** Agree the minimum useful scope, then review that.
+
+Suggested defaults are recommendations, not silent selections:
+* Greenfield feature → EXPANSION
+* Bug fix, hotfix, or refactor → HOLD SCOPE
+* Plan touching >15 files → suggest REDUCTION
+* User explicitly says "go big", "ambitious", or "cathedral" → EXPANSION, no redundant question
+
+Record the selected mode and begin the audit. Step 0 then challenges the premise
+and agrees the concrete scope within that mode; it does not select a mode again.
 
 ## Philosophy
 You are not here to rubber-stamp this plan. You are here to make it extraordinary, catch every landmine before it explodes, and ensure that when it ships, it ships at the highest possible standard. But your posture depends on what the user needs:
@@ -88,8 +105,8 @@ found nothing. Registries and diagrams cover the real codepaths in the plan — 
 not invent rows to make a table look complete, and do not restate the plan back
 to the user. Lead the final report with the CRITICAL GAPs.
 
-## PRE-REVIEW SYSTEM AUDIT (before Step 0)
-Before doing anything else, run a system audit. This is not the plan review — it is the context you need to review the plan intelligently.
+## PRE-REVIEW SYSTEM AUDIT (after mode selection, before Step 0)
+After the Entry Gate, run a system audit. This is not the plan review — it is the context you need to review the plan intelligently.
 Run the equivalent of these in your stack (skip any that don't apply; if no VCS
 or shell is available, gather what you can and state what you couldn't):
 ```
@@ -113,7 +130,7 @@ If a VCS is available, check the history for this branch. If there are prior com
 ### Taste Calibration (EXPANSION mode only)
 Identify 2-3 files or patterns in the existing codebase that are particularly well-designed. Note them as style references for the review. Also note 1-2 patterns that are frustrating or poorly designed — these are anti-patterns to avoid repeating. Report the audit findings before proceeding to Step 0.
 
-## Step 0: Nuclear Scope Challenge + Mode Selection
+## Step 0: Nuclear Scope Challenge (selected mode)
 
 ### 0A. Premise Challenge
 1. Is this the right problem to solve? Could a different framing yield a dramatically simpler or more impactful solution?
@@ -155,19 +172,6 @@ Think ahead to implementation: What decisions will need to be made during implem
 ```
 Surface these as questions for the user NOW, not as "figure it out later."
 
-### 0F. Mode Selection
-Present three options:
-1. **SCOPE EXPANSION:** The plan is good but could be great. Propose the ambitious version, then review that. Push scope up. Build the cathedral.
-2. **HOLD SCOPE:** The plan's scope is right. Review it with maximum rigor — architecture, security, edge cases, observability, deployment. Make it bulletproof.
-3. **SCOPE REDUCTION:** The plan is overbuilt or wrong-headed. Propose a minimal version that achieves the core goal, then review that.
-
-Context-dependent defaults:
-* Greenfield feature → default EXPANSION
-* Bug fix or hotfix → default HOLD SCOPE
-* Refactor → default HOLD SCOPE
-* Plan touching >15 files → suggest REDUCTION unless user pushes back
-* User says "go big" / "ambitious" / "cathedral" → EXPANSION, no question
-
 **STOP.** Apply the section STOP rule.
 
 ## Review Sections (10 sections, after scope and mode are agreed)
@@ -197,7 +201,9 @@ Required ASCII diagram: full system architecture showing new components and thei
 
 ### Section 2: Error & Rescue Map
 This is the section that catches silent failures. It is not optional.
-For every new method, service, or codepath that can fail, fill in this table:
+In every mode, including REDUCTION, cover every fallible method, service, or
+codepath retained in the agreed scope. Explicitly deferred codepaths belong in
+"NOT in scope", not in this registry. Fill in this table:
 ```
   METHOD/CODEPATH          | WHAT CAN GO WRONG           | EXCEPTION CLASS
   -------------------------|-----------------------------|-----------------
@@ -427,10 +433,14 @@ For each TODO, describe:
 * **Priority:** P1/P2/P3
 * **Depends on / blocked by:** Any prerequisites or ordering constraints.
 
-Then present options: **A)** Add to the project's backlog (TODOS.md, issue tracker, etc.) **B)** Skip — not valuable enough **C)** Build it now instead of deferring. Only write to a backlog file if the user picks A.
+Then present options: **A)** Add to the project's backlog (TODOS.md, issue tracker, etc.) **B)** Skip — not valuable enough **C)** Include it in the current implementation plan. Only write to a backlog file if the user picks A.
+
+If C is selected, record the user-approved scope addition in the review response
+and revisit affected sections. This explicit scope decision is not silent mode
+drift, and it is not permission to edit implementation or plan files.
 
 ### Delight Opportunities (EXPANSION mode only)
-Identify at least 5 "bonus chunk" opportunities (<30 min each) that would make users think "oh nice, they thought of that." Present each delight opportunity as its own individual AskUserQuestion. Never batch them. For each one, describe what it is, why it would delight users, and effort estimate. Then present options: **A)** Add to the backlog as a vision item **B)** Skip **C)** Build it now.
+Identify at least 5 "bonus chunk" opportunities (<30 min each) that would make users think "oh nice, they thought of that." Present each delight opportunity as its own individual AskUserQuestion. Never batch them. For each one, describe what it is, why it would delight users, and effort estimate. Then present options: **A)** Add to the backlog as a vision item **B)** Skip **C)** Include it in the current implementation plan. Apply the same review-only scope-admission rule as backlog option C.
 
 ### Diagrams (mandatory, produce all that apply)
 1. System architecture
@@ -449,6 +459,7 @@ List every ASCII diagram in files this plan touches. Still accurate?
   |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
   +====================================================================+
   | Mode selected        | EXPANSION / HOLD / REDUCTION                |
+  | Independent pass     | not requested / completed / unavailable    |
   | System Audit         | [key findings]                              |
   | Step 0               | [mode + key decisions]                      |
   | Section 1  (Arch)    | ___ issues found                            |
@@ -501,8 +512,8 @@ If any AskUserQuestion goes unanswered, note it here. Never silently default.
   │ standard    │  operate"    │  debug it?"  │  it's broken?"     │
   │ Deploy      │ Infra as     │ Safe deploy  │ Simplest possible  │
   │ standard    │ feature scope│  + rollback  │  deploy            │
-  │ Error map   │ Full + chaos │ Full         │ Critical paths     │
-  │             │  scenarios   │              │  only              │
+  │ Error map   │ Full + chaos │ Full         │ All retained       │
+  │             │  scenarios   │              │  codepaths         │
   │ Phase 2/3   │ Map it       │ Note it      │ Skip               │
   │ planning    │              │              │                    │
   └─────────────┴──────────────┴──────────────┴────────────────────┘

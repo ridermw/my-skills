@@ -4,7 +4,46 @@ All notable changes to the skills in this repo.
 
 ## [Unreleased]
 
+### Fixed
+- **`ado-pr-build-monitor`** — every poll now refreshes PR revisions and current
+  required policy/run associations, with a freshness confirmation before a
+  terminal build report. An old successful run cannot certify a new push or
+  expired evaluation. Lifecycle status and completed result are distinct;
+  failed, partial, canceled, pending, unverified, and no-build cases have
+  explicit outcomes. Work-item linkage blocks only when policy/request requires
+  it. Reports say "requested checks passed", not full PR readiness. Replaced the
+  nonexistent CLI log-tail fallback with authenticated Build Log API reads;
+  scheduled monitoring preserves one deadline and cancels on completion.
+- **`sync-repos`** — read the configured tracking remote without splitting `/`,
+  handle `.` as a local upstream, and fetch feature remotes only when needed.
+  Default-branch scope resolves the server's symbolic HEAD rather than trusting
+  a stale cached alias; current-branch scope works without a default. Ancestry,
+  not a failed update, distinguishes divergence from lock/permission errors.
+  Non-checked-out defaults update from already-fetched local refs, retaining
+  worktree protection and local-ahead history. Diagnostic stderr stays separate
+  from parsed Git output, so a warning cannot turn a clean checkout into a
+  reported dirty skip or contaminate commit IDs and counts.
+- **`project-room`** — shortened its description to fit portable loader limits.
+  The base resolver rejects relative pointers and preserves a valid absolute
+  bootstrap target even when absent. Existing summaries and `prep_summary.json`
+  are explicitly snapshot-backed maintenance files, updated at canonical paths;
+  Seek no longer risks selecting a stale unsuffixed summary. Index/Refresh mark
+  review status `needs_review` before changing maintenance state.
+- **`plan-mega-review`** — mode selection now precedes the system audit and
+  mode-specific analysis. REDUCTION maps all retained fallible codepaths, not an
+  undefined critical-only subset. An optional independent pass uses the
+  installed `adversarial-review` policy rather than inventing a separate lineup.
+- **Both plan-review skills** — normalized `allowed-tools` to a scalar and
+  replaced "Build it now" backlog choices with explicit review-only scope
+  admission. A selected addition revisits affected review sections, not code.
+- **README** — corrected the one-file installation claim, clarified operational
+  and optional dependencies, and documented regression/scenario verification.
+
 ### Added
+- **Repository-only regression coverage** — real local Git and room fixtures
+  execute the embedded shell examples; frontmatter checks cover portable scalar
+  metadata. Agent scenario fixtures cover monitoring freshness, terminal
+  outcomes, review mode ordering, scope admission, and canonical summaries.
 - **`project-room`** — a **conversation index** for rooms that hold chats or
   meetings. The inventory records one row per *file*, but a chat thread or
   meeting series is a *conversation*: one thread yields many captures over time,
