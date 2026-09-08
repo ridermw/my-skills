@@ -23,6 +23,12 @@ All notable changes to the skills in this repo.
     objections the verbatim transcript records).
 
 ### Changed
+- **`adversarial-review`** — the preferred three-provider reviewer lineup is now
+  OpenAI, Anthropic and xAI. The xAI slot selects the newest exposed frontier
+  general-reasoning Grok at request time; it does not pin today's version.
+  Google and Gemini models are no longer eligible substitutes. All three
+  reviewers now request `xhigh` reasoning effort uniformly, even when a model
+  exposes a higher setting.
 - **`project-room`** — install now copies the whole `project-room/` folder. The
   split made the operation files load-bearing, but the install text still said
   "drop this single file", which would have left the skill unable to run Index,

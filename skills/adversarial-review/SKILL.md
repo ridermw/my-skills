@@ -49,15 +49,16 @@ consensus-ranked list and the recommended-changes list — cross-reference it.
 
 ## Model Diversity Heuristic
 
-The goal is three independent, high-effort reasoning contexts from three
-*different* model providers. Select by **tier and generation, never by version
-number.** This skill deliberately names no model: any name hardcoded here is
-wrong the moment the runtime updates, and a stale allow-list silently degrades
-the review by excluding models that did not exist when it was written.
+The goal is three independent, high-effort reasoning contexts from OpenAI,
+Anthropic, and xAI. Select by **provider, tier, and generation, never by version
+number.** For xAI, choose the newest exposed frontier general-reasoning Grok
+model. Google and Gemini models are not eligible reviewer substitutes.
 
 **Never hardcode a model version — not in this file, and not in your selection
-reasoning.** Enumerate what the runtime actually exposes at request time, then
-rank it.
+reasoning.** A concrete version is wrong the moment the runtime updates, and a
+stale allow-list silently degrades the review by excluding models that did not
+exist when it was written. Enumerate what the runtime actually exposes at
+request time, then rank it.
 
 Selection rules:
 
@@ -67,8 +68,10 @@ Selection rules:
    not possible — do not guess a lineup from memory. Say so, run the independent
    reviewers you can as `parallel-subagents`, and disclose
    `model diversity not confirmed`.
-2. **One reviewer per provider, three providers.** Independence comes from
-   different providers, not from three variants of one family.
+2. **Use the preferred provider trio.** Assign one reviewer each from OpenAI,
+   Anthropic, and xAI. Independence comes from different providers, not from
+   three variants of one family. Do not fill a missing slot with Google or
+   Gemini; reduce the reviewer count and disclose the downgrade.
 3. **Take each provider's frontier general-reasoning tier** — the tier that
    provider positions for its hardest reasoning and agentic work — and the
    newest generation of that tier.
@@ -77,10 +80,11 @@ Selection rules:
    economical, and any model presented as the lightweight sibling of a larger
    one. Judge by the runtime's own tier description at request time, not by a
    remembered list of names — tier labels change.
-5. **Reasoning effort: the highest each reviewer supports.** Read the effort
-   levels the runtime offers and take the top rung, whatever it is called. Never
-   set a reviewer below the runtime's "high" equivalent. If effort is not
-   controllable, say so rather than implying it was set.
+5. **Reasoning effort: `xhigh` for every reviewer.** Request `xhigh` for each
+   selected model even when it exposes a higher setting. If a model does not
+   expose `xhigh`, or effort is not controllable, leave effort unset and
+   disclose the limitation rather than silently choosing another level or
+   implying that `xhigh` was set.
 6. **Code review:** a code-specialized model may hold a reviewer slot only if it
    is that provider's frontier tier; otherwise keep general-reasoning models.
 7. **Never fabricate.** If a provider, model, or effort level is not actually
