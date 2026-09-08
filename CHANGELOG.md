@@ -72,7 +72,11 @@ All notable changes to the skills in this repo.
   general-reasoning Grok at request time; it does not pin today's version.
   Google and Gemini models are no longer eligible substitutes. All three
   reviewers now request `xhigh` reasoning effort uniformly, even when a model
-  exposes a higher setting.
+  exposes a higher setting. Capability selection and Rubber Duck dispatch reuse
+  the eligible roster and its count; missing preferred providers reduce the
+  actual reviewer count rather than creating a conflicting three-reviewer
+  requirement. Unchanged models no longer imply that no subagents launched
+  (review of #8).
 - **`project-room`** — install now copies the whole `project-room/` folder. The
   split made the operation files load-bearing, but the install text still said
   "drop this single file", which would have left the skill unable to run Index,

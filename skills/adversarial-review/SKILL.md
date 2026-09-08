@@ -22,16 +22,20 @@ For implementation plans, code changes, tests, debugging hypotheses, or critique
 
 ## Capability Check
 
-Before substantive content, determine this once and reuse it:
+Apply Proportionality first. For work warranting subagents, select the eligible
+reviewer roster using the Model Diversity Heuristic and available independent
+contexts. Record the roster and count (at most three for Rubber Duck), then
+derive the execution path below. Rubber Duck dispatch reuses that selection;
+excluded providers do not count.
 
 | Capability | Execution path |
 | --- | --- |
-| Three independent subagents available and model override supports three distinct provider families | `multi-model-subagents` |
-| Three independent subagents available but distinct model control is unavailable or unconfirmed | `parallel-subagents` |
-| One critique/generic subagent available | `single-subagent` |
-| No subagent tool available | `single-agent` |
+| At least two selected reviewers, all on distinct eligible preferred providers with confirmed model overrides | `multi-model-subagents` |
+| At least two selected independent contexts but distinct model control is unavailable or unconfirmed | `parallel-subagents` |
+| One selected critique/generic subagent | `single-subagent` |
+| No eligible subagent can be selected | `single-agent` |
 
-For a substantive artifact, target exactly three independent reviewer contexts whenever possible; see Proportionality below for when a smaller artifact does not warrant three. If three distinct model-backed subagents cannot be launched, degrade gracefully to the best available independent contexts and disclose the downgrade.
+For a substantive artifact, target three independent reviewer contexts whenever possible; see Proportionality below for when a smaller artifact does not warrant three. When eligible providers or independent contexts are insufficient, reduce the selected count and disclose the downgrade.
 
 **Proportionality.** Three reviewers are for a substantive artifact — a plan, a
 design, a diff, a decision with real consequences. For a single function, a
@@ -65,9 +69,10 @@ Selection rules:
 1. **Enumerate, then rank.** Ask the runtime which models it exposes and group
    them by provider. Do not assume any particular provider or model exists. If
    the runtime exposes no model list or no provider metadata, tier selection is
-   not possible — do not guess a lineup from memory. Say so, run the independent
-   reviewers you can as `parallel-subagents`, and disclose
-   `model diversity not confirmed`.
+   not possible — do not guess a lineup from memory. Say so, select the
+   independent contexts available without claiming model control, and disclose
+   `model diversity not confirmed`. Capability Check derives the execution path
+   from the selected count.
 2. **Use the preferred provider trio.** Assign one reviewer each from OpenAI,
    Anthropic, and xAI. Independence comes from different providers, not from
    three variants of one family. Do not fill a missing slot with Google or
@@ -153,8 +158,8 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 
 1. State: `Mode: Rubber Duck`.
 2. Choose the execution path from Capability Check.
-3. For `multi-model-subagents`, launch three independent critique subagents in parallel using the Model Diversity Heuristic and distinct Adversarial Reviewer Lenses.
-4. For `parallel-subagents`, launch three independent critique subagents in parallel without claiming distinct model coverage.
+3. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
+4. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
 5. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
 6. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
 7. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
@@ -267,7 +272,7 @@ Before the substantive answer, state:
 - whether three independent reviewer contexts were achieved
 - whether consensus ranking was performed
 
-Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `single-agent review; no subagent launched; model not changed`.
+Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 
 ## Portability Fallbacks
 

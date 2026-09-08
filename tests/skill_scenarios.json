@@ -2,6 +2,12 @@
   "instructions": "Read the indicated repository skills and dry-run each scenario without external calls or file edits. Return ordered actions, the terminal report or next stop, and governing sections. These are workflow scenarios, not assertions satisfied by matching words in the skill.",
   "scenarios": [
     {
+      "id": "adversarial-preferred-provider-roster",
+      "skills": ["adversarial-review/SKILL.md"],
+      "input": "Run Rubber Duck on a substantive multi-file change. Three independent contexts and model overrides are available. The runtime exposes frontier OpenAI, Anthropic, and Google models supporting xhigh, but no xAI. State the execution path, provider roster, reviewer count, and planned dispatches. Repeat with the full preferred trio available, then with model/provider metadata, model overrides, and effort controls unavailable.",
+      "expected": "Select only OpenAI and Anthropic in the first case, dispatch two multi-model reviewers at xhigh, and disclose the reduced count; do not fill the third slot with Google or a duplicate. With the preferred trio available, dispatch three. With model control unavailable, dispatch the available independent contexts up to three as parallel-subagents and disclose unconfirmed model diversity and unsupported effort control without denying successful agent launches. Capability selection, dispatch, and execution disclosure must retain the selected and actually launched counts."
+    },
+    {
       "id": "ado-stale-success",
       "skills": ["ado-pr-build-monitor/SKILL.md"],
       "input": "After many polls, the initially tracked runs have completed/succeeded and work item 42 is linked. PR metadata and policy evaluations were last fetched at startup for revision A. The user wants the final answer now. What reads and report do you perform?",
