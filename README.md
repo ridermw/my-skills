@@ -95,6 +95,8 @@ python3 -B -m unittest discover -s tests -v
 
 The suite executes the shipped shell examples in temporary local Git
 repositories and room fixtures, and checks scalar frontmatter constraints.
+Metadata regressions reject empty values and unquoted YAML flow collections
+while preserving plain and quoted scalars.
 It needs no network, Azure credentials, or third-party Python packages.
 `tests/skill_scenarios.json` supplies dry-run agent scenarios for the ADO,
 review-mode, and room-maintenance instructions; run them against the full

@@ -20,6 +20,12 @@
       "expected": "Discard the candidate success, rebuild current associations, and continue within the original deadline. Do not reset max wait, queue a run, or report run 10 as current."
     },
     {
+      "id": "ado-linkage-during-confirmation",
+      "skills": ["ado-pr-build-monitor/SKILL.md"],
+      "input": "The user explicitly requested passing builds and a linked work item, but no linkage policy applies. Step 4 listed item 42; it is then unlinked. Source/target revisions, required policy E, approved status, and succeeded run 10 are unchanged. Another work-item list returns no links. The original deadline has two minutes remaining.",
+      "expected": "Re-read all required linked-item references during confirmation, discard the stale success when the reference set changes, and continue within the original deadline. On the next stable snapshot, missing user-required linkage remains pending; never report requested checks passed from the old link."
+    },
+    {
       "id": "mega-mode-order",
       "skills": ["plan-mega-review/SKILL.md"],
       "input": "The user asks for a mega review without specifying a mode. Give the first actions and first user decision. After REDUCTION is selected, describe error-map coverage for retained versus deferred codepaths.",

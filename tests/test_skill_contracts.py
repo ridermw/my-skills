@@ -281,6 +281,27 @@ class RoomResolutionTests(IsolatedFixture):
 
 
 class SkillMetadataTests(unittest.TestCase):
+    def assert_allowed_tools_scalar(self, value):
+        value = value.strip()
+        self.assertTrue(
+            value.strip("'\"").strip(),
+            "allowed-tools must be a nonempty space-separated scalar",
+        )
+        self.assertFalse(
+            value.startswith(("[", "{")),
+            "allowed-tools must be a scalar, not a YAML flow collection",
+        )
+
+    def test_allowed_tools_rejects_collections_and_empty_values(self):
+        for value in ("", "''", '""', "  ", "[Read, Grep]", "[]", "{Read: true}", "{}"):
+            with self.subTest(value=value), self.assertRaises(AssertionError):
+                self.assert_allowed_tools_scalar(value)
+
+    def test_allowed_tools_accepts_plain_and_quoted_scalars(self):
+        for value in ("Read Grep", "'Read Grep'", '"Read Grep"', '"[Read, Grep]"'):
+            with self.subTest(value=value):
+                self.assert_allowed_tools_scalar(value)
+
     def test_frontmatter_fits_the_portable_scalar_contract(self):
         for path in sorted((ROOT / "skills").glob("*/SKILL.md")):
             with self.subTest(skill=path.parent.name):
@@ -291,10 +312,7 @@ class SkillMetadataTests(unittest.TestCase):
                 self.assertTrue(description)
                 self.assertLessEqual(len(description), 1024)
                 if "allowed-tools" in fields:
-                    self.assertTrue(
-                        fields["allowed-tools"].strip("'\""),
-                        "allowed-tools must be a space-separated scalar, not a YAML sequence",
-                    )
+                    self.assert_allowed_tools_scalar(fields["allowed-tools"])
 
 
 if __name__ == "__main__":

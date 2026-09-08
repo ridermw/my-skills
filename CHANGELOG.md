@@ -11,7 +11,9 @@ All notable changes to the skills in this repo.
   expired evaluation. Lifecycle status and completed result are distinct;
   failed, partial, canceled, pending, unverified, and no-build cases have
   explicit outcomes. Work-item linkage blocks only when policy/request requires
-  it. Reports say "requested checks passed", not full PR readiness. Replaced the
+  it. Terminal confirmation also rechecks required linked-item references,
+  including user-requested linkage without a policy (review of #8).
+  Reports say "requested checks passed", not full PR readiness. Replaced the
   nonexistent CLI log-tail fallback with authenticated Build Log API reads;
   scheduled monitoring preserves one deadline and cancels on completion.
 - **`sync-repos`** — read the configured tracking remote without splitting `/`,
@@ -38,6 +40,9 @@ All notable changes to the skills in this repo.
   admission. A selected addition revisits affected review sections, not code.
 - **README** — corrected the one-file installation claim, clarified operational
   and optional dependencies, and documented regression/scenario verification.
+- **Metadata regressions** — reject unquoted YAML flow sequences/maps and empty
+  `allowed-tools` values while retaining plain and quoted scalars. Reported in
+  review of #8.
 
 ### Added
 - **Repository-only regression coverage** — real local Git and room fixtures

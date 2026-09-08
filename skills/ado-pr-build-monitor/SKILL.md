@@ -124,10 +124,11 @@ queue/re-evaluate a policy or build to obtain fresh status.
    a passing build and a linked item. Otherwise linkage is informational and
    never a reason to keep polling. When policy-required, also check that
    evaluation's approval rather than inferring it from a listed item alone.
-5. **Confirm freshness before a terminal build report.** Re-read PR revisions
-   and current required evaluations after reading runs/linkage. If the revision,
-   policy set, run association, or relevant evaluation state changed, discard
-   the candidate result and continue from step 2 within the original deadline.
+5. **Confirm all evidence used for a terminal report.** Re-read PR revisions,
+   current required evaluations, and all linked-item references when step 4
+   requires linkage. If the revision, policy set, run association, relevant
+   evaluation state, or required linked-item reference set changed, discard the
+   candidate result and continue from step 2 within the original deadline.
    A startup run's success is not evidence for a new push or expired validation.
    Apply this confirmation to failed, partially succeeded, and canceled runs
    too, so a superseded failure does not terminate the current monitor.
