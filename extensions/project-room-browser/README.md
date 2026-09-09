@@ -34,6 +34,8 @@ open the project-room canvas for ~/project-rooms/<room>
 
 Conversation age uses effective current captures, while historical captures stay
 visible. Unregistered captures remain reconciliation work regardless of age.
+A current-complete capture only retires unannotated rows when valid dates prove
+they are no newer; a future or undated replacement cannot do so.
 Ambiguous matches never verify coverage; only a valid, non-future date from a
 uniquely attributed current inventory capture can dispute the index's age.
 Source chips select the complete Source ID, not a substring match.
@@ -116,6 +118,12 @@ partially parsed. Text previews show up to 2 MiB, and raw image previews are
 limited to 25 MiB; larger images are listed as non-previewable files rather than
 broken image previews. Source paths use consistent separators, and unrecognised
 source layouts are reported as unverified rather than clean.
+
+Room scans have a 10,000-entry budget, including directories and ignored names.
+They stream one directory at a time and refuse overflow as unverified rather
+than showing partial coverage. A refused selection keeps the previous room.
+Useful depth and missing-manifest inspection remain supported; the entry budget
+is not an operating-system I/O timeout.
 
 ## Testing
 

@@ -5,7 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
-import { browseDir, readRoom, readRoomBytes, readRoomFile } from "../extensions/project-room-browser/room.mjs";
+import { browseDir, parseSimpleYaml, readRoom, readRoomBytes, readRoomFile, repoList } from "../extensions/project-room-browser/room.mjs";
 import * as roomModule from "../extensions/project-room-browser/room.mjs";
 import { sweepPlan } from "../extensions/project-room-browser/teams.mjs";
 import { makeRoom } from "./helpers/canvas-fixture.mjs";
@@ -54,6 +54,134 @@ async function fixture(t, manifest = "project: Fixture\n") {
     await put(root, "room.yaml", manifest);
     return { base, root, outside };
 }
+
+for (const [input, expected] of [
+    [String.raw`C:\rooms\alpha`, String.raw`C:\rooms\alpha`],
+    ["https://example.test/repo", "https://example.test/repo"],
+    ["urn:example:room:alpha", "urn:example:room:alpha"],
+    [String.raw`"C:\rooms\quoted"`, String.raw`C:\rooms\quoted`],
+    ["'label: still a scalar'", "label: still a scalar"],
+]) {
+    test(`YAML sequence preserves the colon-bearing scalar ${input}`, () => {
+        assert.deepEqual(parseSimpleYaml(`repos:\n  - ${input}\n`), { repos: [expected] });
+    });
+}
+
+test("YAML mapping separators require whitespace or end for both matcher sites", () => {
+    const parsed = parseSimpleYaml([
+        "project: Canonical", "status:ready", "https://example.test/repo",
+        "repos:", "  - name: alpha", String.raw`    path: C:\rooms\alpha`,
+        "    url:https://ignored.example.test", "  - name:", "    url:\thttps://example.test/repo", "",
+    ].join("\n"));
+    assert.deepEqual(parsed, {
+        project: "Canonical",
+        repos: [{ name: "alpha", path: String.raw`C:\rooms\alpha` }, { name: "", url: "https://example.test/repo" }],
+    });
+});
+
+test("YAML canonical manifests retain nested links, map items and repository scalars", async (t) => {
+    const { root } = await fixture(t, [
+        "project: Canonical fixture", "review_status: needs_review",
+        "maintenance_links:", "  inventory: 02_inventory/source_inventory.csv",
+        "  change_log: 99_review/change_log.md",
+        "repos:", "  - https://example.test/repo", "  - name: upstream", "    url: https://example.test/upstream",
+        "note: |", "  Keep the original source IDs.", "",
+    ].join("\n"));
+    await put(root, "00_originals/report.md", "Source\n");
+    await put(root, "02_inventory/source_inventory.csv", inventory);
+    await put(root, "99_review/change_log.md", "# Changes\n");
+    const room = await readRoom(root);
+    assert.equal(room.name, "Canonical fixture");
+    assert.equal(room.valid.hasInventory, true);
+    assert.equal(room.logs.change_log.text, "# Changes\n");
+    assert.equal(room.room.note, "Keep the original source IDs.");
+    assert.deepEqual(repoList(room.room).map(({ location, isUrl }) => ({ location, isUrl })), [
+        { location: "https://example.test/repo", isUrl: true },
+        { location: "https://example.test/upstream", isUrl: true },
+    ]);
+    assert.deepEqual(room.health.missingOnDisk, []);
+});
+
+async function ignoredEntries(dir, count) {
+    for (let first = 0; first < count; first += 64) {
+        await Promise.all(Array.from({ length: Math.min(64, count - first) }, (_, offset) =>
+            writeFile(path.join(dir, `._ignored-${first + offset}`), "")));
+    }
+}
+
+test("scan budget accepts exactly 10000 examined entries including ignored types, then refuses overflow", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "00_originals/report.md", "Source\n");
+    await put(root, "02_inventory/source_inventory.csv", inventory);
+    await put(root, ".git/config", "Ignored contents\n");
+    await put(root, "node_modules/dependency/index.js", "Ignored contents\n");
+    await put(root, ".DS_Store", "");
+    await symlink(path.join(root, "00_originals"), path.join(root, "source-alias"), "dir");
+    // Five ordinary entries plus .git, node_modules, .DS_Store and the symlink.
+    await ignoredEntries(root, 9991);
+    const room = await readRoom(root);
+    assert.equal(room.files.length, 3);
+    assert.deepEqual(room.health.missingOnDisk, []);
+    assert.deepEqual(room.health.uninventoried, []);
+    await put(root, "._overflow", "");
+    await assert.rejects(readRoom(root), (error) => {
+        assert.equal(error.code, "ROOM_SCAN_LIMIT");
+        assert.match(error.message, /10,000.*entries/i);
+        assert.match(error.message, /unverified/i);
+        return true;
+    });
+});
+
+test("scan budget is shared across useful depth and still inspects folders without a manifest", async (t) => {
+    const { root } = await fixture(t);
+    await unlink(path.join(root, "room.yaml"));
+    const deep = path.join(root, ...Array(80).fill("d"));
+    await mkdir(deep, { recursive: true });
+    await ignoredEntries(root, 5000);
+    await ignoredEntries(deep, 4920);
+    const room = await readRoom(root);
+    assert.equal(room.valid.hasManifest, false);
+    assert.equal(room.health.unrecognisedLayout, true);
+    assert.deepEqual(room.files, []);
+    await put(deep, "._overflow", "");
+    await assert.rejects(readRoom(root), { code: "ROOM_SCAN_LIMIT" });
+});
+
+test("scan budget bounds directory handles and closes them on overflow and read errors", async (t) => {
+    if (process.platform === "win32") {
+        t.skip("This real descriptor-limit regression requires a POSIX shell");
+        return;
+    }
+    const { root, base } = await fixture(t);
+    const deep = path.join(root, ...Array(100).fill("d"));
+    await mkdir(deep, { recursive: true });
+    await writeFile(path.join(deep, "deep.txt"), "Deep source\n");
+    const overflow = path.join(base, "overflow");
+    await mkdir(overflow);
+    await ignoredEntries(overflow, 10001);
+    const blocked = path.join(base, "blocked");
+    const denied = path.join(blocked, "denied");
+    await mkdir(denied, { recursive: true });
+    await writeFile(path.join(denied, "source.txt"), "Denied source\n");
+    await withDeniedAccess(t, denied, async () => {
+        const script = `
+            import assert from "node:assert/strict";
+            import { readRoom } from ${JSON.stringify(moduleUrl)};
+            for (let i = 0; i < 80; i++) {
+                const room = await readRoom(process.argv[1]);
+                assert.ok(room.files.some((file) => file.name === "deep.txt"));
+                await assert.rejects(readRoom(process.argv[2]), { code: "ROOM_SCAN_LIMIT" });
+                await assert.rejects(readRoom(process.argv[3]), /EACCES|EPERM/);
+            }
+            console.log("scan handles closed");
+        `;
+        const { stdout } = await exec("/bin/sh", [
+            "-c", 'ulimit -n 64 && exec "$@"', "scan-test",
+            process.execPath, "--input-type=module", "-e", script, root, overflow, blocked,
+        ], { timeout: 90000 });
+        assert.equal(stdout.trim(), "scan handles closed");
+    });
+});
 
 const maintenanceFiles = [
     ["manifest", "room.yaml", "project: Linked fixture\n"],

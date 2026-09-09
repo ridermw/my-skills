@@ -2,7 +2,7 @@
 // No dependencies: hand-rolled CSV and a minimal YAML subset reader, because
 // the room format is stable and small enough not to warrant a parser package.
 
-import { readdir, stat, realpath, lstat, open } from "node:fs/promises";
+import { readdir, opendir, stat, realpath, lstat, open } from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
 import { parseChatIndex, teamsHealth, refreshTeamsHealth } from "./teams.mjs";
@@ -154,7 +154,7 @@ export function parseSimpleYaml(text) {
             }
             if (!Array.isArray(out[currentKey])) continue;
             const item = seq[1];
-            const asMap = item.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+            const asMap = item.match(/^([A-Za-z0-9_.-]+):(?=\s|$)\s*(.*)$/);
             if (asMap) {
                 // "- name: alpha" opens a map item; its siblings follow indented
                 seqItem = { [asMap[1]]: unquote(scalarAndComment(asMap[2])) };
@@ -166,7 +166,7 @@ export function parseSimpleYaml(text) {
             continue;
         }
 
-        const m = trimmed.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+        const m = trimmed.match(/^([A-Za-z0-9_.-]+):(?=\s|$)\s*(.*)$/);
         if (!m) continue;
         const [, key, rest] = m;
 
@@ -245,21 +245,44 @@ export function repoList(room) {
 /* ---------------- filesystem ---------------- */
 const SKIP = new Set([".DS_Store", ".git", "node_modules", "Thumbs.db"]);
 
-async function walk(dir, root, acc = []) {
-    const target = await assertInsideReal(root, dir);
-    const entries = await readdir(target, { withFileTypes: true });
-    for (const e of entries) {
-        if (SKIP.has(e.name) || e.name.startsWith("._")) continue;
-        const full = path.join(dir, e.name);
-        const rel = path.relative(root, full);
-        if (e.isDirectory()) {
-            acc.push({ rel, name: e.name, dir: true });
-            await walk(full, root, acc);
-        } else if (e.isFile()) {
-            const s = await stat(await assertInsideReal(root, full));
-            const size = s.size;
-            const mtime = s.mtime.toISOString().slice(0, 10);
-            acc.push({ rel, name: e.name, dir: false, size, mtime, ext: path.extname(e.name).toLowerCase() });
+// Fixed per-room policy: count all encountered entries before exclusions.
+// The next entry refuses the scan, never a partial/healthy coverage result.
+const MAX_SCAN_ENTRIES = 10_000;
+
+async function walk(root) {
+    const acc = [];
+    const pending = [root];
+    let examined = 0;
+    while (pending.length) {
+        const dir = pending.pop();
+        const target = await assertInsideReal(root, dir);
+        // Stream one directory at a time; depth consumes queued paths, not handles.
+        const entries = await opendir(target, { bufferSize: 32 });
+        try {
+            for (;;) {
+                const e = await entries.read();
+                if (!e) break;
+                if (examined === MAX_SCAN_ENTRIES) {
+                    const error = new Error("Refused: room scan exceeds 10,000 examined entries; coverage is unverified");
+                    error.code = "ROOM_SCAN_LIMIT";
+                    throw error;
+                }
+                examined++;
+                if (SKIP.has(e.name) || e.name.startsWith("._")) continue;
+                const full = path.join(dir, e.name);
+                const rel = path.relative(root, full);
+                if (e.isDirectory()) {
+                    acc.push({ rel, name: e.name, dir: true });
+                    pending.push(full);
+                } else if (e.isFile()) {
+                    const s = await stat(await assertInsideReal(root, full));
+                    const size = s.size;
+                    const mtime = s.mtime.toISOString().slice(0, 10);
+                    acc.push({ rel, name: e.name, dir: false, size, mtime, ext: path.extname(e.name).toLowerCase() });
+                }
+            }
+        } finally {
+            await entries.close();
         }
     }
     return acc;
@@ -343,7 +366,7 @@ export async function readRoom(roomPath) {
     if (invText == null) invText = await readIfPresent(root, "02_inventory/source_inventory.csv");
     const sources = invText ? csvToObjects(invText).map(normaliseRow) : [];
 
-    const files = await walk(root, root);
+    const files = await walk(root);
     const byTop = new Map();
     for (const f of files) {
         if (f.dir) continue;

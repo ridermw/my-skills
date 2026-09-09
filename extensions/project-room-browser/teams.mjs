@@ -456,17 +456,22 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         return null;
     };
     const conversations = index.conversations.map((c) => {
-        // A capture that was superseded by a later, complete capture is history,
-        // not an open failure. Only the effective current captures can fail.
-        // Counting every historical partial made threads that had already been
-        // re-captured show up as needing a sweep.
+        // Only a dated, non-future complete replacement can prove another row is history.
         const superseded = new Set(c.captures.filter((x) => x.isSuperseded).map((x) => x.sourceId));
-        const hasCurrentComplete = c.captures.some(
-            (x) => x.isCurrent && x.complete === true && !superseded.has(x.sourceId) && !isFutureDate(x.captured, now)
-        );
-        const effectiveCaptures = c.captures.filter(
-            (x) => !superseded.has(x.sourceId) && !(hasCurrentComplete && !x.isCurrent)
-        );
+        let replacementDate = null;
+        for (const capture of c.captures) {
+            if (!capture.isCurrent || capture.complete !== true || superseded.has(capture.sourceId)) continue;
+            const captured = isoDateTime(capture.captured);
+            if (captured != null && captured <= now) {
+                replacementDate = replacementDate == null ? captured : Math.max(replacementDate, captured);
+            }
+        }
+        const effectiveCaptures = c.captures.filter((capture) => {
+            if (superseded.has(capture.sourceId)) return false;
+            if (capture.isCurrent || replacementDate == null) return true;
+            const captured = isoDateTime(capture.captured);
+            return captured == null || captured > replacementDate;
+        });
         const dates = effectiveCaptures.map((x) => x.captured)
             .filter((date) => isoDateTime(date) != null && !isFutureDate(date, now)).sort();
         const last = dates.length ? dates[dates.length - 1] : null;

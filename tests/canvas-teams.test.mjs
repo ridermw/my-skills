@@ -239,6 +239,49 @@ test("quick-map sources without detail capture rows need reconciliation, not re-
     assert.deepEqual(teams.sweepPlan(health).targets, []);
 });
 
+for (const [replacementDate, partialDate, retained] of [
+    ["2026-09-01", "2026-09-07", true],
+    ["2026-02-30", "2026-09-07", true],
+    ["", "2026-09-07", true],
+    ["2026-09-09", "2026-09-07", true],
+    ["2026-09-08", "", true],
+    ["2026-09-08", "2026-02-30", true],
+    ["2026-09-08", "2026-09-09", true],
+    ["2026-09-08", "2026-09-07", false],
+    ["2026-09-08", "2026-09-08", false],
+]) {
+    for (const reverse of [false, true]) {
+        test(`dated complete replacement ${replacementDate || "unknown"} vs partial ${partialDate || "unknown"}, reverse=${reverse}`, () => {
+            const rows = [
+                `| S001 | partial.json | ${partialDate} | first page | partial |`,
+                `| S002 current | full.json | ${replacementDate} | full | complete |`,
+            ];
+            const health = healthFor(reverse ? rows.reverse() : rows);
+            const [c] = health.conversations;
+            assert.equal(c.captures.length, 2);
+            assert.deepEqual(c.incompleteCaptures.map((x) => x.sourceId), retained ? ["S001"] : []);
+            assert.equal(c.needsRecapture, retained);
+            assert.equal(teams.sweepPlan(health).targets.length, retained ? 1 : 0);
+        });
+    }
+}
+
+test("dated complete replacement ignores invalid candidates and preserves explicitly current partials", () => {
+    const health = healthFor([
+        "| S001 | newer-partial.json | 2026-09-07 | page | partial |",
+        "| S002 current | older-full.json | 2026-09-01 | full | complete |",
+        "| S003 current | invalid-full.json | 2026-02-30 | full | complete |",
+        "| S004 current | disputed-partial.json | 2026-08-01 | page | partial |",
+        "| S005 superseded | history.json | 2026-09-08 | page | partial |",
+    ]);
+    const [c] = health.conversations;
+    assert.deepEqual(c.incompleteCaptures.map((x) => x.sourceId), ["S001", "S004"]);
+    assert.equal(c.lastCaptured, "2026-09-07");
+    assert.equal(c.unknownCaptureDate, true);
+    assert.equal(c.needsRecapture, true);
+    assert.equal(c.captures.length, 5);
+});
+
 test("unknown capture completeness is not healthy or automatic re-capture evidence", () => {
     const health = healthFor(["| S001 current | latest.json | 2026-09-08 | latest page | |"]);
     const [c] = health.conversations;
@@ -712,18 +755,20 @@ test("a missing current capture date remains a reconciliation problem after inve
 });
 
 for (const annotation of ["superseded", ""]) {
-    test(`unknown dates in ineffective historical captures do not require reconciliation (${annotation || "replaced"})`, () => {
+    test(`unknown capture dates remain relevant unless explicitly superseded (${annotation || "unverified"})`, () => {
         const health = healthFor([
             `| S001 ${annotation} | old.json | 2026-02-30 | page | partial |`,
             "| S002 current | full.json | 2026-09-08 | full | complete |",
         ]);
         const [c] = health.conversations;
-        assert.equal(c.unknownCaptureDate, false);
-        assert.equal(c.needsReconciliation, false);
-        assert.equal(c.hasProblem, false);
-        assert.equal(health.counts.unknownCaptureDate, 0);
-        assert.equal(health.counts.needsReconciliation, 0);
-        assert.deepEqual(teams.sweepPlan(health).targets, []);
+        const unverified = annotation === "";
+        assert.equal(c.unknownCaptureDate, unverified);
+        assert.equal(c.needsReconciliation, unverified);
+        assert.equal(c.hasProblem, unverified);
+        assert.equal(health.counts.unknownCaptureDate, Number(unverified));
+        assert.equal(health.counts.needsReconciliation, Number(unverified));
+        assert.deepEqual(c.incompleteCaptures.map((capture) => capture.sourceId), unverified ? ["S001"] : []);
+        assert.equal(teams.sweepPlan(health).targets.length, Number(unverified));
     });
 }
 
@@ -831,21 +876,23 @@ test("quick-map sources missing from historical detail rows remain an index-deta
     assert.deepEqual(teams.sweepPlan(health).targets, []);
 });
 
-test("ineffective valid history cannot supply a missing effective capture date", () => {
-    const health = healthFor([
-        "| S001 | history.json | 2026-09-08 | full | complete |",
-        "| S002 current | current.json | | full | complete |",
-    ]);
-    const [c] = health.conversations;
-    assert.equal(c.lastCaptured, null);
-    assert.equal(c.daysSinceCapture, null);
-    assert.equal(c.unknownCaptureDate, true);
-    assert.equal(c.effectiveCaptureCount, 1);
-    assert.equal(c.noCaptures, false);
-    assert.equal(c.needsReconciliation, true);
-    assert.equal(c.needsRecapture, false);
-    assert.equal(c.hasProblem, true);
-});
+for (const annotation of ["superseded", ""]) {
+    test(`an undated current capture cannot retire unmarked dated evidence (${annotation || "unmarked"})`, () => {
+        const health = healthFor([
+            `| S001 ${annotation} | history.json | 2026-09-08 | full | complete |`,
+            "| S002 current | current.json | | full | complete |",
+        ]);
+        const [c] = health.conversations;
+        assert.equal(c.lastCaptured, annotation ? null : "2026-09-08");
+        assert.equal(c.daysSinceCapture, annotation ? null : 0);
+        assert.equal(c.unknownCaptureDate, true);
+        assert.equal(c.effectiveCaptureCount, annotation ? 1 : 2);
+        assert.equal(c.noCaptures, false);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.needsRecapture, false);
+        assert.equal(c.hasProblem, true);
+    });
+}
 
 for (const complete of ["complete", "partial"]) {
     test(`current detail rows do not hide quick-map missing-detail gaps (${complete})`, () => {

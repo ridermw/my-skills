@@ -25,6 +25,31 @@ test("room reads require the API header, not a query token", async (t) => {
     assert.equal((await response.json()).room.root, root);
 });
 
+test("scan budget refusal over HTTP leaves the previous room and file scope unchanged", async (t) => {
+    const root = await makeRoom(t);
+    const oversized = await makeRoom(t, 0);
+    for (let first = 0; first < 10000; first += 64) {
+        await Promise.all(Array.from({ length: Math.min(64, 10000 - first) }, (_, offset) =>
+            writeFile(path.join(oversized, `._ignored-${first + offset}`), "")));
+    }
+    const { origin, state } = await serveRoom(t, root);
+    const headers = { "x-room-token": state.token };
+    const response = await fetch(`${origin}/api/room?path=${encodeURIComponent(oversized)}`, { headers });
+    assert.equal(response.status, 500);
+    const refusal = await response.json();
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.error, /10,000.*entries/i);
+    assert.match(refusal.error, /unverified/i);
+    assert.equal(refusal.room, undefined);
+    assert.equal(state.roomPath, root);
+    const current = await fetch(`${origin}/api/room`, { headers });
+    assert.equal(current.status, 200);
+    assert.equal((await current.json()).room.root, root);
+    const file = await fetch(`${origin}/api/file?rel=00_originals/source-1.txt`, { headers });
+    assert.equal(file.status, 200);
+    assert.equal((await file.json()).file.text, "Source 1 contents\n");
+});
+
 test("an authenticated instance with no selected room reports the picker state explicitly", async (t) => {
     const { origin, state } = await serveRoom(t, "");
     const response = await fetch(`${origin}/api/room`, { headers: { "x-room-token": state.token } });
