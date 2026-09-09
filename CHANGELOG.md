@@ -94,6 +94,11 @@ All notable changes to the skills in this repo.
   quick-map detail rows even when other captures exist, join unambiguous
   single-token conversation names, and treat future capture dates as unverified
   rather than evidence of current coverage.
+- **`project-room-browser` display/coverage consistency (#7)** — derive
+  Overview badges and cards from one warning model, including room validity,
+  lifecycle and layout problems. Share escaped-pipe table parsing between the
+  coverage reader and Markdown preview, and give biweekly cadence precedence
+  over the generic weekly match.
 
 ### Added
 - **Repository-only regression coverage** — real local Git and room fixtures

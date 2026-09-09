@@ -1,6 +1,8 @@
 // The canvas UI: a single self-contained HTML document.
 // Data arrives from the extension's local API, so this file is pure rendering.
 
+import { parseMarkdownTableRow } from "./markdown-table.mjs";
+
 const HOST_THEME_CSS = `:root {
   /* Raw palette, aliased straight from the host's canvas theme variables. These
      are live var() references, so when the app's theme changes the whole panel
@@ -653,6 +655,7 @@ img.preview { max-width: 100%; height: auto; border: 1px solid var(--cp-border);
 </head>
 <body>
 <div id="app"><div class="boot" role="status" aria-label="Loading room"><div class="sk sk-rail"></div><div class="sk-main"><div class="sk sk-h"></div><div class="sk sk-cards"></div><div class="sk sk-l"></div><div class="sk sk-l"></div><div class="sk sk-l short"></div></div></div></div>
+<script>const parseMarkdownTableRow = (${parseMarkdownTableRow.toString()});</script>
 <script src="/client.js"></script>
 </body>
 </html>`;

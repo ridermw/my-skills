@@ -37,6 +37,8 @@ visible. Unregistered captures remain reconciliation work regardless of age.
 Ambiguous matches never verify coverage; only a valid, non-future date from a
 uniquely attributed current inventory capture can dispute the index's age.
 Source chips select the complete Source ID, not a substring match.
+Overview badges and cards use the same warning model. The coverage reader and
+Markdown preview share table-cell parsing so escaped pipes cannot shift columns.
 
 ## Theming
 

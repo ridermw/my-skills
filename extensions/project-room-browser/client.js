@@ -50,9 +50,8 @@ function md(src) {
     t = t.replace(/(^\|.+\|[ \t]*\n\|[\s:|-]+\|[ \t]*\n(?:\|.*\|[ \t]*\n?)*)/gm, (block) => {
         const lines = block.trim().split("\n").filter(Boolean);
         if (lines.length < 2) return block;
-        const cells = (l) => l.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
-        const head = cells(lines[0]);
-        const rows = lines.slice(2).map(cells);
+        const head = parseMarkdownTableRow(lines[0]);
+        const rows = lines.slice(2).map(parseMarkdownTableRow);
         return (
             "<table><thead><tr>" +
             head.map((c) => "<th>" + inline(c) + "</th>").join("") +
@@ -226,10 +225,8 @@ async function load(pathOverride) {
 /* ---------------- render ---------------- */
 function render() {
     const d = DATA;
-    const hl = d.health;
-    const nFlags =
-        hl.staleRenders.length + hl.missingOnDisk.length +
-        new Set([...(hl.inboxPending || []), ...hl.uninventoried]).size;
+    const flags = overviewFlags(d);
+    const nFlags = flags.reduce((total, flag) => total + flag.count, 0);
     $("#app").innerHTML = `
     <nav class="rail" role="tablist" aria-label="Room views">
       <div class="room">
@@ -285,40 +282,36 @@ function render() {
     });
     const sw = $("#switchroom");
     if (sw) sw.onclick = () => { BROWSE = null; renderPicker(""); };
-    if (VIEW === "overview") renderOverview();
+    if (VIEW === "overview") renderOverview(flags);
     if (VIEW === "inventory") renderInventory();
     if (VIEW === "review") renderReview();
     if (VIEW === "teams") renderTeams();
     if (VIEW === "files") renderFiles();
 }
 
-function renderOverview() {
-    const d = DATA;
+function overviewFlags(d) {
     const hl = d.health;
-    const by = (f) => {
-        const m = {};
-        for (const s of d.sources) m[s[f] || "—"] = (m[s[f] || "—"] || 0) + 1;
-        return Object.entries(m).sort((a, b) => b[1] - a[1]);
-    };
-
     const flags = [];
     const v = d.valid || {};
     // Validity comes first: "is this even a room?" outranks "is it stale?".
     if (!v.hasManifest)
         flags.push({
             cls: "bad",
+            count: 1,
             title: "No room.yaml manifest",
             body: "This folder has no room.yaml, so it may not be a project room at all. Nothing below can be trusted as a health check.",
         });
     if (!v.hasInventory)
         flags.push({
             cls: "bad",
+            count: 1,
             title: "No source inventory",
             body: "There is no source_inventory.csv, so no source can be cited and nothing can be drafted from this room yet.",
         });
     else if (!v.inventoryRows)
         flags.push({
             cls: "bad",
+            count: 1,
             title: "Inventory is empty",
             body: "source_inventory.csv exists but has no rows. Add sources before drafting from this room.",
         });
@@ -326,6 +319,7 @@ function renderOverview() {
     if (inbox.length)
         flags.push({
             cls: "warn",
+            count: inbox.length,
             title: plural(inbox.length, "file") + " waiting in 01_inbox",
             body: "Intake staged but not yet inventoried, so nothing downstream can cite it. Process or discard.",
             items: inbox.map((p) => ({ label: p, path: p })),
@@ -333,6 +327,7 @@ function renderOverview() {
     if (hl.staleRenders.length)
         flags.push({
             cls: "warn",
+            count: hl.staleRenders.length,
             title: plural(hl.staleRenders.length, "render") + " past the " + hl.renderExpiryDays + "-day expiry",
             body:
                 "room.yaml sets render_expiry_days: " +
@@ -344,6 +339,7 @@ function renderOverview() {
     if (nc.length)
         flags.push({
             cls: nc.some((s) => s.runnable && !s.partial) ? "bad" : "warn",
+            count: nc.length,
             title: plural(nc.length, "source") + " not safe to cite as current",
             body:
                 "Superseded or abandoned sources are kept so old citations still resolve, not because they are usable. " +
@@ -359,6 +355,7 @@ function renderOverview() {
     if (hl.missingOnDisk.length)
         flags.push({
             cls: "bad",
+            count: hl.missingOnDisk.length,
             title: plural(hl.missingOnDisk.length, "inventory row") + " pointing at a missing file",
             body: "The inventory cites these paths but they are not on disk. Either the file moved, or the row needs a [REMOVED] marker.",
             items: hl.missingOnDisk.map((r) => ({ label: r.id + " · " + r.path, sourceId: r.id })),
@@ -367,6 +364,7 @@ function renderOverview() {
     if (other.length)
         flags.push({
             cls: "warn",
+            count: other.length,
             title: plural(other.length, "source file") + " not in the inventory",
             body: "Sitting in a source folder but absent from the inventory, so nothing downstream can cite them.",
             items: other.slice(0, 40).map((p) => ({ label: p, path: p })),
@@ -374,16 +372,29 @@ function renderOverview() {
     if (hl.unrecognisedLayout)
         flags.push({
             cls: "warn",
+            count: 1,
             title: "Unrecognised source layout",
             body: "No recognised source directories were checked. Source-inventory coverage is unverified.",
         });
     if (!flags.length)
         flags.push({
             cls: "ok",
+            count: 0,
             title: "No structural drift detected",
             body: "Every inventory row resolves to a file, every source file is inventoried, the inbox is clear, and no render is past its expiry.",
         });
 
+    return flags;
+}
+
+function renderOverview(flags) {
+    const d = DATA;
+    const hl = d.health;
+    const by = (f) => {
+        const m = {};
+        for (const s of d.sources) m[s[f] || "—"] = (m[s[f] || "—"] || 0) + 1;
+        return Object.entries(m).sort((a, b) => b[1] - a[1]);
+    };
     const links = d.room.maintenance_links || {};
     const manifestKeys = ["project", "status", "room_kind", "last_refreshed", "status_verified", "render_expiry_days", "id_prefix"];
 

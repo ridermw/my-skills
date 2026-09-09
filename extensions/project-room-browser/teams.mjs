@@ -15,6 +15,7 @@
 
 import { untrustedBlock, untrustedValue } from "./prompt-data.mjs";
 import { isoDateTime } from "./dates.mjs";
+import { parseMarkdownTableRow } from "./markdown-table.mjs";
 
 const RX = {
     heading: /^##\s+(.+?)\s*$/,
@@ -33,12 +34,6 @@ const stripMd = (s) =>
         .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
         .trim();
 
-const cells = (line) =>
-    line
-        .replace(/^\||\|$/g, "")
-        .split("|")
-        .map((c) => c.trim());
-
 /** true / false / null when the source says nothing either way. */
 function tri(text) {
     const t = String(text || "");
@@ -54,10 +49,10 @@ function tablesIn(lines) {
     const out = [];
     for (let i = 0; i < lines.length; i++) {
         if (!RX.tableRow.test(lines[i]) || !RX.tableSep.test((lines[i + 1] || "").trim())) continue;
-        const header = cells(lines[i]);
+        const header = parseMarkdownTableRow(lines[i]);
         const rows = [];
         let j = i + 2;
-        for (; j < lines.length && RX.tableRow.test(lines[j]); j++) rows.push(cells(lines[j]));
+        for (; j < lines.length && RX.tableRow.test(lines[j]); j++) rows.push(parseMarkdownTableRow(lines[j]));
         out.push({ header, rows, at: i });
         i = j - 1;
     }
@@ -398,8 +393,8 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         // rather than in a labelled field, so the name has to be part of the signal.
         const s = ((c.recurs || "") + " " + (c.kindLabel || "") + " " + (c.name || "")).toLowerCase();
         if (/daily/.test(s)) return 1;
-        if (/weekly|every week/.test(s)) return 7;
         if (/fortnight|biweekly|every two weeks|every other week/.test(s)) return 14;
+        if (/weekly|every week/.test(s)) return 7;
         if (/monthly/.test(s)) return 30;
         return null;
     };

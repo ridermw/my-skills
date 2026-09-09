@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import * as teams from "../extensions/project-room-browser/teams.mjs";
 import { untrustedBlock, untrustedValue } from "../extensions/project-room-browser/prompt-data.mjs";
 
@@ -951,4 +952,137 @@ test("a future capture retains missing artifacts while future scheduled occurren
     assert.equal(c.needsReconciliation, true);
     assert.equal(c.needsRecapture, true);
     assert.deepEqual(teams.sweepPlan(health).targets, [c]);
+});
+
+for (const { slashes, literalPipe, coverage } of [
+    { slashes: 0, literalPipe: false, coverage: "pages 1" },
+    { slashes: 1, literalPipe: true, coverage: "pages 1 | 2" },
+    { slashes: 2, literalPipe: false, coverage: "pages 1 \\\\" },
+    { slashes: 3, literalPipe: true, coverage: "pages 1 \\\\| 2" },
+    { slashes: 4, literalPipe: false, coverage: "pages 1 \\\\\\\\" },
+    { slashes: 5, literalPipe: true, coverage: "pages 1 \\\\\\\\| 2" },
+]) {
+    test(`escaped-pipe capture cells preserve Complete=no with ${slashes} preceding backslashes`, () => {
+        const field = "pages 1 " + "\\".repeat(slashes) + (literalPipe ? "| 2 " : "");
+        const health = healthFor([
+            `| MEMO-S004 current | C:\\captures\\capture.json | 2026-09-08 | ${field}| no |`,
+        ]);
+        const [c] = health.conversations;
+        const [capture] = c.captures;
+        assert.equal(capture.coverage, coverage);
+        assert.equal(capture.file, "C:\\captures\\capture.json");
+        assert.equal(capture.completeNote, "no");
+        assert.equal(capture.complete, false);
+        assert.deepEqual(c.incompleteCaptures.map((x) => x.sourceId), ["MEMO-S004"]);
+        assert.deepEqual(teams.sweepPlan(health).targets, [c]);
+        const { data } = sweepData(teams.sweepPlan(health).text);
+        assert.equal(data.targets[0].reasons.incompleteCaptures.items[0].coverage, coverage);
+    });
+}
+
+test("escaped-pipe cell scanning preserves empty columns and literal edge pipes", () => {
+    const health = healthFor([
+        "| S001 || 2026-09-08 || no |",
+        "| S002 || 2026-09-08 | \\| pages \\| ||   ",
+        "| S003 || 2026-09-08 || no\\||",
+    ]);
+    const [c] = health.conversations;
+    assert.deepEqual(c.captures.map((capture) => ({
+        file: capture.file, coverage: capture.coverage, completeNote: capture.completeNote, complete: capture.complete,
+    })), [
+        { file: "", coverage: "", completeNote: "no", complete: false },
+        { file: "", coverage: "| pages |", completeNote: "", complete: null },
+        { file: "", coverage: "", completeNote: "no|", complete: false },
+    ]);
+    assert.deepEqual(c.incompleteCaptures.map((x) => x.sourceId), ["S001", "S003"]);
+});
+
+test("escaped-pipe quick-map cells retain identities, source IDs and authored coverage positions", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        quickRows: [`| 1 | Alpha \\| Beta | \`${alphaId}\` | Group \\| project | MEMO-S004 \\| S005 | no \\| missing pages |`],
+        details: [detail(1, "Alpha thread", alphaId)],
+    }));
+    const [q] = parsed.quickMap;
+    assert.equal(q.name, "Alpha | Beta");
+    assert.equal(q.chatIdShort, alphaId);
+    assert.equal(q.type, "Group | project");
+    assert.deepEqual(q.sourceIds, ["MEMO-S004", "S005"]);
+    assert.equal(q.fullyCaptured, false);
+    assert.equal(q.capturedNote, "no | missing pages");
+    const health = teams.teamsHealth(parsed, { now });
+    assert.equal(health.conversations.length, 1);
+    assert.deepEqual(health.conversations[0].sourceIds, ["MEMO-S004", "S005"]);
+    assert.equal(health.conversations[0].authoredIncomplete, true);
+    assert.equal(teams.sweepPlan(health).targets.length, 1);
+});
+
+test("escaped-pipe occurrence headers and notes preserve missing-artifact columns", () => {
+    const health = healthFor(["| S001 current | full.json | 2026-09-08 | full | complete |"], {
+        extra: [
+            "| Date | Verbatim transcript \\| notes | Recap |",
+            "| --- | --- | --- |",
+            "| 2026-09-07 | MEMO-S004 \\| checked | |",
+        ].join("\n"),
+    });
+    const [c] = health.conversations;
+    assert.deepEqual(c.occurrences[0].artifacts, [
+        { label: "Verbatim transcript | notes", present: true, sourceIds: ["MEMO-S004"], note: "MEMO-S004 | checked" },
+        { label: "Recap", present: false, sourceIds: [], note: "" },
+    ]);
+    assert.deepEqual(c.missingArtifacts, [{ date: "2026-09-07", label: "Recap", note: "" }]);
+    assert.deepEqual(teams.sweepPlan(health).targets, [c]);
+});
+
+test("escaped-pipe gap cells preserve literal pipes and leading or trailing empty cells", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        details: [detail(1, "Alpha", alphaId)],
+        gaps: [
+            "| Paging \\| continuation | pages 1 \\| 2 |",
+            "|| undocumented \\| check |",
+            "| Reference \\| status ||",
+        ],
+    }));
+    assert.deepEqual(parsed.knownGaps, [
+        { gap: "Paging | continuation", detail: "pages 1 | 2" },
+        { gap: "", detail: "undocumented | check" },
+        { gap: "Reference | status", detail: "" },
+    ]);
+    const health = teams.teamsHealth(parsed, { now });
+    assert.deepEqual(sweepData(teams.sweepPlan(health).text).data.knownGaps.items, parsed.knownGaps);
+});
+
+for (const { name, captured, cadence, window, stale } of [
+    { name: "Biweekly planning", captured: "2026-08-19", cadence: 14, window: 21, stale: false },
+    { name: "Biweekly planning", captured: "2026-08-18", cadence: 14, window: 21, stale: true },
+    { name: "Weekly planning", captured: "2026-08-26", cadence: 7, window: 14, stale: false },
+    { name: "Weekly planning", captured: "2026-08-25", cadence: 7, window: 14, stale: true },
+    { name: "Fortnightly planning", captured: "2026-08-18", cadence: 14, window: 21, stale: true },
+    { name: "Planning every two weeks", captured: "2026-08-18", cadence: 14, window: 21, stale: true },
+    { name: "Planning every other week", captured: "2026-08-18", cadence: 14, window: 21, stale: true },
+]) {
+    test(`cadence precedence preserves ${name} at the ${captured} capture boundary`, () => {
+        const health = healthFor([`| S001 current | full.json | ${captured} | full | complete |`], { name });
+        const [c] = health.conversations;
+        assert.equal(c.cadenceDays, cadence);
+        assert.equal(c.staleWindowDays, window);
+        assert.equal(c.daysSinceCapture, stale ? window : window - 1);
+        assert.equal(c.isStale, stale);
+        assert.equal(c.needsRecapture, stale);
+        assert.equal(health.counts.stale, stale ? 1 : 0);
+        assert.equal(teams.sweepPlan(health).targets.length, stale ? 1 : 0);
+    });
+}
+
+test("shared Markdown row parser source is self-contained for classic-script embedding", async () => {
+    const { parseMarkdownTableRow } = await import("../extensions/project-room-browser/markdown-table.mjs");
+    const embedded = runInNewContext(parseMarkdownTableRow.toString() + "\nparseMarkdownTableRow;", {});
+    for (const [line, expected] of [
+        ["| left\\|right | | no |", ["left|right", "", "no"]],
+        ["| even\\\\| no |", ["even\\\\", "no"]],
+        ["| odd\\\\\\| pipe ||", ["odd\\\\| pipe", ""]],
+        ["||\\| edge \\||", ["", "| edge |"]],
+    ]) {
+        assert.deepEqual(parseMarkdownTableRow(line), expected);
+        assert.deepEqual(Array.from(embedded(line)), expected);
+    }
 });

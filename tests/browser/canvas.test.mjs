@@ -546,3 +546,46 @@ test("a real deeply nested room retains its exact action target", async (t) => {
     assert.ok(field);
     assert.equal(JSON.parse(field[1]), root);
 });
+
+for (const [condition, expected] of [
+    ["clean", 0], ["missing manifest", 1], ["missing inventory", 2],
+    ["empty inventory", 2], ["unknown lifecycle", 1], ["unrecognised layout", 1],
+    ["large unregistered group", 55],
+]) {
+    test(`Overview badge counts rendered evidence for ${condition}`, async (t) => {
+        const root = await makeRoom(t);
+        const inventory = path.join(root, "02_inventory/source_inventory.csv");
+        if (condition === "missing manifest") await rm(path.join(root, "room.yaml"));
+        if (condition === "missing inventory") await rm(inventory);
+        if (condition === "empty inventory") await writeFile(inventory, "Source ID,Path,Authority,Current or superseded\n");
+        if (condition === "unknown lifecycle") await writeFile(inventory,
+            "Source ID,Path,Authority,Current or superseded\nS001,00_originals/source-1.txt,Primary,unknown\n");
+        if (condition === "unrecognised layout") {
+            await rename(path.join(root, "00_originals/source-1.txt"), path.join(root, "source.txt"));
+            await rm(path.join(root, "00_originals"), { recursive: true });
+            await writeFile(inventory, "Source ID,Path,Authority,Current or superseded\nS001,source.txt,Primary,current\n");
+        }
+        if (condition === "large unregistered group") {
+            await Promise.all(Array.from({ length: 55 }, (_, i) =>
+                writeFile(path.join(root, `00_originals/unregistered-${i}.txt`), "Synthetic source\n")));
+        }
+        const { page } = await openPage(t, root);
+        const badge = page.locator("#tab-overview .n");
+        if (expected) assert.equal(await badge.textContent(), `${expected} flag${expected === 1 ? "" : "s"}`);
+        else {
+            assert.equal(await badge.count(), 0);
+            assert.equal(await page.locator("#p-overview .flag.ok").count(), 1);
+        }
+    });
+}
+
+test("Markdown preview retains escaped pipes within their original columns", async (t) => {
+    const root = await makeRoom(t);
+    await writeFile(path.join(root, "00_originals/pipe-table.md"),
+        "| Coverage | Complete |\n| --- | --- |\n| pages 1 \\| 2 | no |\n");
+    const { page } = await openPage(t, root);
+    await page.locator("#tab-files").click();
+    await page.locator('[data-rel="00_originals/pipe-table.md"]').click();
+    await page.locator("#viewer table").waitFor();
+    assert.deepEqual(await page.locator("#viewer td").allTextContents(), ["pages 1 | 2", "no"]);
+});
