@@ -8,12 +8,25 @@ All notable changes to the skills in this repo.
 - **`extensions/project-room-browser`** — a Copilot CLI canvas that browses a
   project room: validity and drift signals, the faceted source inventory, room
   docs, files, and a Teams page showing per-conversation coverage. Read-only and
-  credential-free — its action buttons generate an instruction naming the
-  relevant `project-room` operation file rather than restating the procedure, so
-  the skill stays the single source of truth. Room content is escaped in the UI
-  and quoted inside a labelled untrusted-data block in every generated prompt.
+  free of external-service credentials — action buttons generate instructions
+  rather than editing the room. Index, Refresh and reconciliation defer to the
+  relevant `project-room` operation file. Room content is escaped in the UI
+  and quoted in generated prompts.
   Colours come entirely from the host app's theme variables, so the panel follows
   the app's theme automatically; the stylesheet contains no colour literals.
+
+### Fixed
+- **`project-room-browser` review follow-up (#7)** — private fragment launch
+  capabilities replace secrets embedded in public HTML; image previews use a
+  separate, narrower capability. Manifest reads stay inside the room, previews
+  are bounded, and source-inventory comparison handles Windows separators and
+  deeply nested files. Coverage keeps identity conflicts and missing detail
+  records visible, separates reconciliation from recapture, preserves partial
+  captures until a demonstrably complete replacement exists, and uses the same
+  capture predicate for cards, badges and sweep plans. Also fixed file-preview
+  response ordering, unknown-layout reporting, the narrow rail, and source
+  result-limit validation. Added real filesystem, HTTP, SDK-action and browser
+  regressions with development-only dependencies.
 
 ### Added
 - **`project-room`** — a **conversation index** for rooms that hold chats or

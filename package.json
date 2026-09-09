@@ -1,0 +1,14 @@
+{
+  "name": "my-skills-development",
+  "private": true,
+  "scripts": {
+    "test:canvas": "node --test tests/canvas-*.test.mjs",
+    "test:canvas:browser": "node --test tests/browser/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.15"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

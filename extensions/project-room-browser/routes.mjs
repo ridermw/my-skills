@@ -21,21 +21,16 @@ export function json(res, code, body) {
  * `state` is mutated when a room is opened, so the root is server-owned.
  */
 export async function handleRequest(state, req, res) {
-    const url = new URL(req.url, "http://127.0.0.1");
     try {
-        /* Capability check.
-           /api/room accepts a caller-supplied `path` and makes it the server-owned
-           root -- that is deliberate, because the picker has to open whatever folder
-           the user chooses. Without a secret, though, any local process or any web
-           page in the browser could POST /api/room?path=/etc and then read files
-           through /api/file. The token is minted per server instance and handed only
-           to the document this server itself serves, so an attacker who cannot read
-           that document cannot drive the API.
-           /api/raw is also reached from <img src>, which cannot set a header, so the
-           token is accepted as a query parameter there too. */
+        const url = new URL(req.url, "http://127.0.0.1");
+        // The launch URL carries capabilities out of band. A preview URL grants
+        // image access only; its token cannot be promoted to the full API.
         if (url.pathname.startsWith("/api/")) {
-            const supplied = req.headers["x-room-token"] || url.searchParams.get("t") || "";
-            if (!state.token || supplied !== state.token) {
+            const supplied = req.headers["x-room-token"];
+            const apiAccess = typeof supplied === "string" && state.token && supplied === state.token;
+            const previewAccess = !supplied && url.pathname === "/api/raw" &&
+                state.previewToken && url.searchParams.get("t") === state.previewToken;
+            if (!apiAccess && !previewAccess) {
                 return json(res, 403, { ok: false, error: "Refused: missing or invalid canvas token." });
             }
             // A cross-site caller should never reach this API even with a token.
@@ -55,7 +50,7 @@ export async function handleRequest(state, req, res) {
 
         if (url.pathname === "/api/room") {
             const p = url.searchParams.get("path") || state.roomPath;
-            if (!p) return json(res, 400, { ok: false, error: "No room path supplied" });
+            if (!p) return json(res, 409, { ok: false, code: "ROOM_NOT_SELECTED", error: "No room is open" });
             const room = await readRoom(p);
             state.roomPath = room.root;
             return json(res, 200, { ok: true, room });
@@ -110,13 +105,7 @@ export async function handleRequest(state, req, res) {
         }
 
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(
-            renderShell({
-                token: state.token,
-                roomPath: state.roomPath,
-                roomName: path.basename(state.roomPath || ""),
-            })
-        );
+        res.end(renderShell());
     } catch (err) {
         json(res, 500, { ok: false, error: String(err && err.message ? err.message : err) });
     }

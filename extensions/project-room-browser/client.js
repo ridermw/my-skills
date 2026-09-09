@@ -6,21 +6,22 @@ const $ = (s, r = document) => r.querySelector(s);
 const h = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-/* Every API call must present the per-instance capability token, otherwise the
-   loopback server would answer any local process or web page that guessed the
-   port. The token is minted by the server and handed only to this document. */
-const TOKEN = (document.querySelector('meta[name="canvas-token"]') || {}).content || "";
+/* Fragments arrive through the private canvas launch URL, not the HTTP shell. */
+const CAPABILITIES = new URLSearchParams(window.location.hash.slice(1));
+const TOKEN = CAPABILITIES.get("token") || "";
+const PREVIEW_TOKEN = CAPABILITIES.get("preview") || "";
 const api = (path, opts) => {
     const o = opts || {};
     return fetch(path, { ...o, headers: { ...(o.headers || {}), "x-room-token": TOKEN } });
 };
 /* <img> cannot set a header, so raw bytes carry the token as a query parameter. */
-const rawUrl = (rel) => "/api/raw?rel=" + encodeURIComponent(rel) + "&t=" + encodeURIComponent(TOKEN);
+const rawUrl = (rel) => "/api/raw?rel=" + encodeURIComponent(rel) + "&t=" + encodeURIComponent(PREVIEW_TOKEN);
 
 let DATA = null;
 let VIEW = "overview";
 let SEL = null;
 let FILE = null;
+let fileLoadGeneration = 0;
 let LOGKEY = null;
 let FILTERS = {};
 let Q = "";
@@ -204,12 +205,17 @@ function changeClass(v) {
 
 /* ---------------- data ---------------- */
 async function load(pathOverride) {
-    const p = pathOverride || window.__ROOM_PATH__;
-    const r = await api("/api/room?path=" + encodeURIComponent(p));
+    const p = pathOverride || window.__ROOM_PATH__ || "";
+    const r = await api("/api/room" + (p ? "?path=" + encodeURIComponent(p) : ""));
     const j = await r.json();
-    if (!j.ok) throw new Error(j.error || "Failed to read room");
+    if (!j.ok) {
+        const error = new Error(j.error || "Failed to read room");
+        error.code = j.code;
+        throw error;
+    }
     DATA = j.room;
     window.__ROOM_PATH__ = DATA.root;
+    document.title = DATA.name || "Project room";
     return DATA;
 }
 
@@ -345,6 +351,12 @@ function renderOverview() {
             title: plural(other.length, "source file") + " not in the inventory",
             body: "Sitting in a source folder but absent from the inventory, so nothing downstream can cite them.",
             items: other.slice(0, 40).map((p) => ({ label: p, path: p })),
+        });
+    if (hl.unrecognisedLayout)
+        flags.push({
+            cls: "warn",
+            title: "Unrecognised source layout",
+            body: "No recognised source directories were checked. Source-inventory coverage is unverified.",
         });
     if (!flags.length)
         flags.push({
@@ -888,14 +900,9 @@ function moveFileSelection(dir) {
 
 /* ---------------- teams ---------------- */
 
-/* Count CONVERSATIONS needing attention, not the number of problems.
-   Summing problems gave "8 to sweep" for a room with 5 conversations, and
-   disagreed with the sweep plan, which targets distinct conversations. */
 function tFlagCount(t) {
     if (!t || !t.conversations) return 0;
-    // Single shared predicate so the badge, the cards and the sweep plan can
-    // never disagree about which conversations need attention.
-    return t.conversations.filter((c) => c.hasProblem).length;
+    return t.conversations.filter((c) => c.needsRecapture).length;
 }
 
 /** Copy text and give the button transient, accessible confirmation. */
@@ -1029,32 +1036,25 @@ function buildRefreshPrompt(d) {
 
 function buildReconcilePrompt(c, roomName, root) {
     return [
-        "Reconcile the Teams chat index with the source inventory for the project room " + q(roomName) + ".",
-        "Room folder: " + q(root),
-        "",
-        "The inventory lists source(s) for this conversation that the chat index does not register,",
-        "so the index understates coverage and the staleness reading is wrong.",
+        "Run the project-room skill's Index operation (index.md) to reconcile the chat index and source inventory.",
         "",
         UNTRUSTED_BANNER,
+        "room: " + q(roomName),
+        "room folder: " + q(root),
         "conversation: " + q(c.name) + (c.chatId ? "  chat_id: " + q(c.chatId) : ""),
         "index says last captured: " + q(c.lastCaptured),
+        "known source IDs: " + q((c.sourceIds || []).join(", ")),
+        "identity conflicts: " + q(JSON.stringify(c.identityConflicts || []), 1200),
         ...(c.unregistered || []).map(
             (u) => "unregistered source: " + q(u.id) + "  date: " + q(u.date) + "  type: " + q(u.type) + "  path: " + q(u.path)
         ),
         UNTRUSTED_END,
         "",
-        "Do this:",
-        "1. Open each unregistered source and confirm it really is a capture of THIS conversation",
-        "   (match on chat_id where possible, not on the file name).",
-        "2. If it is, add it to 02_inventory/chat-index.md under the correct numbered section:",
-        "   its Source id, file, captured date, coverage window, message count, and whether the",
-        "   capture is complete. Update the Quick map's 'Fully captured?' cell to match.",
-        "3. If the capture is an AI-generated recap rather than a verbatim transcript, record it as",
-        "   such: recaps have been shown to omit objections that appear in the transcript, so a recap",
-        "   alone does not make a thread fully covered.",
-        "4. If it is NOT a capture of this conversation, leave the index alone and correct the",
-        "   inventory row instead.",
-        "5. Do not renumber or reuse any S### id.",
+        "Follow index.md exactly, including its snapshot and review gate.",
+        "Inspect the existing sources to establish conversation identity and coverage before changing either index.",
+        "Do not merge disputed identities or infer missing captures solely from incomplete index metadata.",
+        "Reconciliation is complete when the inventory and chat index agree with the source evidence.",
+        "Do not draft anything, and STOP at the review gate.",
     ].join("\n");
 }
 
@@ -1099,12 +1099,20 @@ function buildNuggetPrompt(c, roomName, root) {
 }
 
 function buildTaskPrompt(c, roomName, root) {
+    if (c.needsReconciliation && !c.needsRecapture) {
+        return [
+            "Create a task to reconcile conversation coverage records, not to re-capture the thread.",
+            "",
+            buildReconcilePrompt(c, roomName, root),
+        ].join("\n");
+    }
     const why = [];
     if (c.isStale) why.push("last captured " + c.lastCaptured + ", " + c.daysSinceCapture + " days ago");
     for (const x of c.incompleteCaptures || []) why.push(x.sourceId + " is a partial capture");
     for (const m of c.missingArtifacts || []) why.push("missing " + m.label + " for " + m.date);
     return [
         "Create a task to bring a Teams thread back into coverage.",
+        c.needsReconciliation ? "Reconcile the existing coverage records with index.md before collecting missing evidence." : "",
         "",
         "Title: Re-capture the conversation named " + q(c.name) + " for room " + q(roomName),
         "Room folder: " + q(root),
@@ -1161,7 +1169,8 @@ async function renderTeams() {
         '<div class="teamshead">' +
         "<div><h2>Teams coverage</h2>" +
         '<p class="sub">One row per conversation. Tracked in <code>' + h(t.rel) + "</code>, " +
-        "separate from the file inventory. Stale after " + t.staleAfterDays + " days.</p></div>" +
+        "separate from the file inventory. Coverage windows follow each conversation's cadence; " +
+        h(t.staleAfterDays) + " days is the fallback.</p></div>" +
         '<div class="theadacts">' +
         '<button class="btn primary" id="sweepbtn" type="button">Sweep for updates</button>' +
         "</div></div>" +
@@ -1174,6 +1183,11 @@ async function renderTeams() {
             )
             .join("") +
         "</div>" +
+        ((t.identityConflicts || []).length
+            ? '<div class="err" role="alert"><h3>Conversation identity conflicts</h3><p>' +
+              t.identityConflicts.length + " quick-map mapping(s) disagree with the detail sections. " +
+              "Reconcile the index before relying on those coverage fields.</p></div>"
+            : "") +
         '<section class="sec"><h3>Conversations</h3><div class="convs">' +
         cs.map((c) => convCard(c)).join("") +
         "</div></section>" +
@@ -1234,8 +1248,7 @@ function convCard(c) {
     const tone = c.noCaptures || (c.isStale && !disputed) ? "bad" : c.hasProblem || disputed ? "warn" : "good";
     const when = c.lastCaptured
         ? c.daysSinceCapture + " day" + (c.daysSinceCapture === 1 ? "" : "s") + " ago"
-        : "never recorded";
-    const newest = (c.unregistered || []).reduce((a, b) => (!a || b.date > a.date ? b : a), null);
+        : c.noCaptures ? "none recorded" : "date unverified";
     const problems = [];
     for (const u of c.unregistered || [])
         problems.push(
@@ -1243,6 +1256,15 @@ function convCard(c) {
             ") for this thread, but the chat index does not list it. The date above is from the index, so it understates coverage."
         );
     if (c.noCaptures) problems.push("No capture is recorded for this thread at all.");
+    if ((c.identityConflicts || []).length)
+        problems.push("Conversation identity conflicts need reconciliation before quick-map coverage can be trusted.");
+    if (c.indexDetailGap)
+        problems.push("Known source IDs lack capture detail records; reconcile the chat index.");
+    if (c.unknownCompleteness)
+        problems.push("Capture completeness is unconfirmed; reconcile it against the existing source evidence.");
+    if (c.needsReconciliation && !(c.unregistered || []).length &&
+        !(c.identityConflicts || []).length && !c.indexDetailGap && !c.unknownCompleteness)
+        problems.push("Coverage details need reconciliation with the chat index.");
     if (c.authoredIncomplete)
         problems.push("The index marks this thread as not fully captured" + (c.capturedNote ? " \u2014 " + c.capturedNote : "") + ".");
     if (c.isStale) problems.push("Not re-captured since " + c.lastCaptured);
@@ -1257,6 +1279,7 @@ function convCard(c) {
         '<span class="badge b-' + (c.type === "Meeting" ? "purple" : c.type === "Group" ? "blue" : "gray") + '">' + h(c.type || "Chat") + "</span>" +
         (c.recurs ? '<span class="mi">' + h(c.recurs) + "</span>" : "") +
         (c.participants ? '<span class="mi">' + h(c.participants) + "</span>" : "") +
+        '<span class="mi">' + h(c.staleWindowDays) + "-day window</span>" +
         "</div></div>" +
         '<div class="convwhen ' + tone + '"><span class="wv">' + h(when) + "</span>" +
         (disputed
@@ -1279,12 +1302,14 @@ function convCard(c) {
             : "") +
         (problems.length
             ? '<ul class="probs">' + problems.map((p) => "<li>" + h(p) + "</li>").join("") + "</ul>"
-            : '<div class="clean">Captured ' + h(c.lastCaptured || "\u2014") + ", index reports fully captured.</div>") +
+            : '<div class="clean">No known capture gaps.</div>') +
         '<footer class="convacts">' +
-        (disputed
+        (c.needsReconciliation
             ? '<button class="btn sm" data-act="reconcile" data-conv="' + c.index + '" type="button">Reconcile index\u2026</button>'
             : "") +
-        '<button class="btn sm" data-act="recapture" data-conv="' + c.index + '" type="button">Re-capture\u2026</button>' +
+        (c.needsRecapture
+            ? '<button class="btn sm" data-act="recapture" data-conv="' + c.index + '" type="button">Re-capture\u2026</button>'
+            : "") +
         '<button class="btn sm" data-act="nugget" data-conv="' + c.index + '" type="button">Save a nugget\u2026</button>' +
         '<button class="btn sm" data-act="task" data-conv="' + c.index + '" type="button">Make a task\u2026</button>' +
         "</footer></article>"
@@ -1344,12 +1369,15 @@ async function renderFiles() {
 }
 
 async function showFile(rel) {
+    const generation = ++fileLoadGeneration;
     const v = $("#viewer");
     if (!v) return;
+    const current = () => generation === fileLoadGeneration && FILE === rel && v === $("#viewer");
     v.innerHTML = '<div class="skeleton"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div><div class="sk w40"></div></div>';
     try {
         const r = await api("/api/file?rel=" + encodeURIComponent(rel));
         const j = await r.json();
+        if (!current()) return;
         if (!j.ok) throw new Error(j.error);
         const f = j.file;
         const kbs = (n) => (n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
@@ -1374,6 +1402,7 @@ async function showFile(rel) {
         wireBackTree();
         v.scrollTop = 0;
     } catch (e) {
+        if (!current()) return;
         v.innerHTML = '<div class="err"><h3>Could not open file</h3><div>' + h(e.message) + "</div></div>";
     }
 }
@@ -1462,7 +1491,9 @@ async function renderPicker(errMsg, lastTried) {
     let data = { roots: [], rooms: [], browse: null };
     try {
         const dir = BROWSE ? "?dir=" + encodeURIComponent(BROWSE) : "";
-        data = await (await api("/api/browse" + dir)).json();
+        const result = await (await api("/api/browse" + dir)).json();
+        if (!result.ok) throw new Error(result.error || "Could not browse folders");
+        data = result;
     } catch (e) {
         errMsg = errMsg || String(e.message || e);
     }
@@ -1560,8 +1591,8 @@ async function renderPicker(errMsg, lastTried) {
 
 /* ---------------- boot ---------------- */
 (async () => {
-    if (!window.__ROOM_PATH__) {
-        await renderPicker("");
+    if (!TOKEN) {
+        $("#app").innerHTML = '<div class="err" role="alert">Open this canvas using its private launch link.</div>';
         return;
     }
     try {
@@ -1569,7 +1600,10 @@ async function renderPicker(errMsg, lastTried) {
         render();
     } catch (e) {
         // A bad path should land in the picker, not a dead end.
-        await renderPicker(friendlyError(String(e.message || e)), window.__ROOM_PATH__);
+        await renderPicker(
+            e.code === "ROOM_NOT_SELECTED" ? "" : friendlyError(String(e.message || e)),
+            window.__ROOM_PATH__
+        );
     }
 })();
 

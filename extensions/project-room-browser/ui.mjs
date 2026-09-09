@@ -58,14 +58,13 @@ const HOST_THEME_CSS = `:root {
   --tint-muted: color-mix(in srgb, var(--ansi-w) 15%, transparent);
 }`;
 
-export function renderShell({ roomPath, roomName, token = "" }) {
+export function renderShell() {
     return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc(roomName || "Project room")}</title>
-<meta name="canvas-token" content="${esc(token)}" />
+<title>Project room</title>
 <style id="host-theme-aliases">${HOST_THEME_CSS}</style>
 <style>
 /* THEME RULE -- do not violate:
@@ -258,27 +257,6 @@ table.kv tr:last-child td { border-bottom: none; }
 .dot.warn { background: var(--cp-warning); }
 .dot.bad { background: var(--cp-danger); }
 .dot.ok { background: var(--cp-success); }
-
-/* Under 520px the rail becomes a horizontal tab strip. Stacking five full-width
-   rows cost ~340px of vertical space before any content appeared. */
-@media (max-width: 520px) {
-  .rail {
-    flex-direction: row; align-items: center; gap: 2px;
-    border-right: none; border-bottom: 1px solid var(--cp-border);
-    padding: 6px 8px; overflow-x: auto; overflow-y: hidden;
-  }
-  .rail .room { padding: 0 8px 0 2px; flex: 0 0 auto; max-width: 34vw; }
-  .rail .room h1 { font-size: 12.5px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rail .room .sub { display: none; }
-  .rail button.nav { width: auto; flex: 0 0 auto; padding: 5px 9px; gap: 5px; }
-  .rail .foot {
-    margin-top: 0; margin-left: auto; padding: 0 0 0 8px;
-    border-top: none; border-left: 1px solid var(--cp-border);
-    display: flex; align-items: center; flex: 0 0 auto;
-  }
-  .rail .foot .btn.switch { width: auto; margin: 0; white-space: nowrap; }
-  .rail .foot .rootpath { display: none; }
-}
 
 /* ---------- inventory ---------- */
 .invwrap { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr); min-height: 0; flex: 1; }
@@ -622,6 +600,24 @@ input[type="search"] { flex: 1; min-width: 0; }
   .repolist { grid-template-columns: 1fr; }
   .detail, .viewer { padding: 14px 14px 32px; }
 }
+@media (max-width: 520px) {
+  .rail {
+    flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 2px;
+    border-right: none; border-bottom: 1px solid var(--cp-border);
+    padding: 6px 8px; overflow-x: auto; overflow-y: hidden;
+  }
+  .rail .room { padding: 0 8px 0 2px; flex: 0 0 auto; max-width: 34vw; }
+  .rail .room h1 { font-size: 12.5px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail .room .sub { display: none; }
+  .rail button.nav { width: auto; flex: 0 0 auto; padding: 5px 9px; gap: 5px; }
+  .rail .foot {
+    margin-top: 0; margin-left: auto; padding: 0 0 0 8px;
+    border-top: none; border-left: 1px solid var(--cp-border);
+    display: flex; align-items: center; flex: 0 0 auto;
+  }
+  .rail .foot .btn.switch { width: auto; margin: 0; white-space: nowrap; }
+  .rail .foot .rootpath { display: none; }
+}
 .loading { padding: 40px; text-align: center; color: var(--ui-muted); font-size: 13px; }
 .skeleton { padding: 18px 20px; }
 .skeleton .sk {
@@ -663,25 +659,7 @@ img.preview { max-width: 100%; height: auto; border: 1px solid var(--cp-border);
 </head>
 <body>
 <div id="app"><div class="boot" role="status" aria-label="Loading room"><div class="sk sk-rail"></div><div class="sk-main"><div class="sk sk-h"></div><div class="sk sk-cards"></div><div class="sk sk-l"></div><div class="sk sk-l"></div><div class="sk sk-l short"></div></div></div></div>
-<script>
-window.__ROOM_PATH__ = ${jsSafe(roomPath || "")};
-</script>
 <script src="/client.js"></script>
 </body>
 </html>`;
-}
-
-/** JSON for embedding inside a <script> element: escape HTML-significant and
- *  line-separator characters that JSON.stringify leaves intact. */
-function jsSafe(v) {
-    return JSON.stringify(v)
-        .replace(/</g, "\\u003c")
-        .replace(/>/g, "\\u003e")
-        .replace(/&/g, "\\u0026")
-        .replace(/\u2028/g, "\\u2028")
-        .replace(/\u2029/g, "\\u2029");
-}
-
-function esc(s) {
-    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }

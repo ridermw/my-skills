@@ -2,9 +2,9 @@
 // No dependencies: hand-rolled CSV and a minimal YAML subset reader, because
 // the room format is stable and small enough not to warrant a parser package.
 
-import { readFile, readdir, stat, realpath } from "node:fs/promises";
+import { readFile, readdir, stat, realpath, lstat, open } from "node:fs/promises";
 import path from "node:path";
-import { parseChatIndex, teamsHealth } from "./teams.mjs";
+import { parseChatIndex, teamsHealth, refreshTeamsHealth } from "./teams.mjs";
 
 /* ---------------- CSV ---------------- */
 // Handles quoted fields, escaped quotes, and newlines inside quotes, which the
@@ -243,30 +243,20 @@ export function repoList(room) {
 /* ---------------- filesystem ---------------- */
 const SKIP = new Set([".DS_Store", ".git", "node_modules", "Thumbs.db"]);
 
-async function walk(dir, root, depth = 0, acc = []) {
-    let entries;
-    try {
-        entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-        return acc;
-    }
+async function walk(dir, root, acc = []) {
+    const target = await assertInsideReal(root, dir);
+    const entries = await readdir(target, { withFileTypes: true });
     for (const e of entries) {
         if (SKIP.has(e.name) || e.name.startsWith("._")) continue;
         const full = path.join(dir, e.name);
         const rel = path.relative(root, full);
         if (e.isDirectory()) {
             acc.push({ rel, name: e.name, dir: true });
-            if (depth < 4) await walk(full, root, depth + 1, acc);
+            await walk(full, root, acc);
         } else if (e.isFile()) {
-            let size = 0;
-            let mtime = null;
-            try {
-                const s = await stat(full);
-                size = s.size;
-                mtime = s.mtime.toISOString().slice(0, 10);
-            } catch {
-                /* unreadable file still worth listing */
-            }
+            const s = await stat(await assertInsideReal(root, full));
+            const size = s.size;
+            const mtime = s.mtime.toISOString().slice(0, 10);
             acc.push({ rel, name: e.name, dir: false, size, mtime, ext: path.extname(e.name).toLowerCase() });
         }
     }
@@ -275,9 +265,23 @@ async function walk(dir, root, depth = 0, acc = []) {
 
 async function readIfPresent(root, rel) {
     try {
-        return await readFile(path.join(root, rel), "utf8");
-    } catch {
-        return null;
+        const target = await assertInsideReal(root, resolveInside(root, rel));
+        if (!(await stat(target)).isFile()) throw new Error("Not a file: " + rel);
+        return await readFile(target, "utf8");
+    } catch (error) {
+        if (error.code === "ENOENT") return null;
+        throw error;
+    }
+}
+
+async function fileIdentity(root, rel) {
+    try {
+        const target = await assertInsideReal(root, resolveInside(root, rel));
+        const s = await stat(target, { bigint: true });
+        return s.isFile() ? `${s.dev}:${s.ino}` : null;
+    } catch (error) {
+        if (error.code === "ENOENT") return null;
+        throw error;
     }
 }
 
@@ -312,11 +316,22 @@ export async function readRoom(roomPath) {
 
     const yamlText = await readIfPresent(root, "room.yaml");
     const room = yamlText ? parseSimpleYaml(yamlText) : {};
+    if (room.maintenance_links !== undefined) {
+        const links = room.maintenance_links;
+        if (!links || typeof links !== "object" || Array.isArray(links)) {
+            throw new Error("Invalid maintenance_links: expected a map of file paths");
+        }
+        for (const [key, rel] of Object.entries(links)) {
+            if (typeof rel !== "string" || !rel.trim() || rel.includes("\0")) {
+                throw new Error("Invalid maintenance_links." + key + ": expected a nonempty file path");
+            }
+        }
+    }
 
     // The manifest names where the inventory lives; fall back to convention.
     const invRel = room.maintenance_links?.inventory?.replace(/\.md$/, ".csv") || "02_inventory/source_inventory.csv";
     let invText = await readIfPresent(root, invRel);
-    if (!invText) invText = await readIfPresent(root, "02_inventory/source_inventory.csv");
+    if (invText == null) invText = await readIfPresent(root, "02_inventory/source_inventory.csv");
     const sources = invText ? csvToObjects(invText).map(normaliseRow) : [];
 
     const files = await walk(root, root);
@@ -341,29 +356,27 @@ export async function readRoom(roomPath) {
     const SOURCE_DIRS = new Set(["00_originals", "01_inbox", "06_evidence"]);
     const INDEX_FILES = new Set(["README.md", "readme.md", "index.md"]);
 
-    // Compare paths on a normalised key: macOS is case-insensitive and OneDrive
-    // returns NFD, so raw string comparison reported false drift both ways.
-    // Case-fold ONLY where the filesystem is case-insensitive. On Linux an
-    // inventory row for "Report.md" must not be satisfied by "report.md" on disk,
-    // because opening the inventoried path would fail. Unicode normalisation is
-    // portable and stays unconditional (OneDrive hands back NFD).
-    const foldCase = process.platform === "darwin" || process.platform === "win32";
-    const key = (p) => {
-        const n = String(p || "").normalize("NFC");
-        return foldCase ? n.toLowerCase() : n;
-    };
-    const fileKeys = new Set(files.filter((f) => !f.dir).map((f) => key(f.rel)));
-    const invKeys = new Set(sources.map((r) => key(r.Path)).filter(Boolean));
-    const hasFile = (p) => fileKeys.has(key(p));
+    // Resolve both host-native disk paths and room-format paths through the
+    // filesystem: case/Unicode aliases count only when they name the same file.
+    const fileKeys = new Map();
+    for (const f of files) {
+        if (!f.dir) fileKeys.set(f.rel, await fileIdentity(root, f.rel));
+    }
+    const sourceKeys = new Map();
+    for (const r of sources) {
+        if (r.Path && !sourceKeys.has(r.Path)) sourceKeys.set(r.Path, await fileIdentity(root, r.Path));
+    }
+    const invKeys = new Set([...sourceKeys.values()].filter((key) => key !== null));
+    const hasFile = (p) => sourceKeys.get(p) != null;
     const missingOnDisk = sources
         .filter((r) => r.Path && !hasFile(r.Path) && !/\[\s*REMOVED\b[^\]]*\]/i.test(r.Change || "") && !/^unavailable$/i.test((r.Lifecycle || "").trim()))
         .map((r) => ({ id: r["Source ID"], path: r.Path }));
 
     const inSourceDir = (rel) => SOURCE_DIRS.has(rel.split(path.sep)[0]);
     const uninventoried = files
-        .filter((f) => !f.dir && !invKeys.has(key(f.rel)))
+        .filter((f) => !f.dir && !invKeys.has(fileKeys.get(f.rel)))
         .filter((f) => inSourceDir(f.rel))
-        .filter((f) => !INDEX_FILES.has(f.name))
+        .filter((f) => f.rel.split(path.sep).length !== 2 || !INDEX_FILES.has(f.name))
         .filter((f) => !f.rel.includes(path.sep + "_superseded" + path.sep))
         .map((f) => f.rel);
 
@@ -437,7 +450,7 @@ export async function readRoom(roomPath) {
     // signal here, not just bookkeeping.
     const NOT_CURRENT = /superseded|historical|abandoned/i;
     const notCurrent = sources
-        .filter((s) => NOT_CURRENT.test(s.Lifecycle || ""))
+        .filter((s) => NOT_CURRENT.test(s.Lifecycle || "") || /^superseded$/i.test((s.Authority || "").trim()))
         .map((s) => ({
             id: s["Source ID"],
             path: s.Path,
@@ -502,31 +515,16 @@ export async function readRoom(roomPath) {
         if (idx) {
             teams = { rel: chatRel, ...teamsHealth(idx) };
             const extra = unregisteredCaptures(teams.conversations);
-            let n = 0;
             for (const c of teams.conversations) {
                 c.unregistered = extra.get(c.index) || [];
-                n += c.unregistered.length;
                 // A newer unregistered capture means the index's own date, and
                 // therefore the staleness verdict, cannot be trusted.
                 if (c.unregistered.length) {
                     c.staleDateDisputed = true;
-                    // The index's date is the only evidence for "stale", and a newer
-                    // unregistered capture contradicts it. Leaving isStale set kept
-                    // the thread in the sweep targets and kept offering Re-capture --
-                    // the misleading action this is supposed to replace. Reconciling
-                    // the index is the real work, so drop the stale claim and let
-                    // the dispute itself carry the problem.
                     c.isStale = false;
-                    c.hasProblem =
-                        c.noCaptures ||
-                        c.authoredIncomplete ||
-                        c.incompleteCaptures.length > 0 ||
-                        c.missingArtifacts.length > 0 ||
-                        true; // the unregistered capture is itself the problem
                 }
             }
-            teams.counts.unregistered = n;
-            teams.counts.stale = teams.conversations.filter((c) => c.isStale).length;
+            refreshTeamsHealth(teams);
         }
     } catch (e) {
         teams = { rel: chatRel, error: String(e && e.message) };
@@ -582,24 +580,36 @@ function resolveInside(roomPath, rel) {
  * link inside the room could point anywhere. Compare the REAL paths too.
  */
 async function assertInsideReal(roomPath, target) {
-    let realRoot;
-    let realTarget;
-    try {
-        realRoot = await realpath(path.resolve(roomPath));
-    } catch {
-        realRoot = path.resolve(roomPath);
+    const realRoot = await realpath(path.resolve(roomPath));
+    let ancestor = target;
+    let missing;
+    for (;;) {
+        let realTarget;
+        try {
+            realTarget = await realpath(ancestor);
+        } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+            missing ??= error;
+            let entry;
+            try {
+                entry = await lstat(ancestor);
+            } catch (entryError) {
+                if (entryError.code !== "ENOENT") throw entryError;
+            }
+            if (entry) throw new Error("Refused: cannot resolve room path " + ancestor, { cause: error });
+            const parent = path.dirname(ancestor);
+            if (parent === ancestor) throw error;
+            ancestor = parent;
+            continue;
+        }
+        if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+            throw new Error("Refused: path escapes the room");
+        }
+        // A missing optional file is safe only after its nearest existing
+        // ancestor resolves inside the room; dangling links are not absence.
+        if (missing) throw missing;
+        return realTarget;
     }
-    try {
-        realTarget = await realpath(target);
-    } catch {
-        return target; // does not exist yet; lexical check already passed
-    }
-    if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
-        throw new Error("Refused: path escapes the room");
-    }
-    // Return the RESOLVED path so the caller reads that, not the original.
-    // Reading the unresolved path would re-follow symlinks and reopen the race.
-    return realTarget;
 }
 
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".bmp", ".ico"]);
@@ -624,52 +634,75 @@ function looksBinary(buf) {
 
 const MAX_TEXT = 2 * 1024 * 1024;
 
+async function readPrefix(handle, limit) {
+    const chunks = [];
+    let length = 0;
+    while (length < limit) {
+        const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, limit - length));
+        const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+        if (bytesRead === 0) break;
+        chunks.push(chunk.subarray(0, bytesRead));
+        length += bytesRead;
+    }
+    return Buffer.concat(chunks, length);
+}
+
 /**
  * Read one file from inside the room, classifying it so the UI never has to
  * render binary content as text. Returns { kind: "text" | "image" | "binary" }.
  */
 export async function readRoomFile(roomPath, rel) {
     const target = await assertInsideReal(roomPath, resolveInside(roomPath, rel));
-    const s = await stat(target);
-    if (!s.isFile()) throw new Error("Not a file");
+    const handle = await open(target, "r");
+    try {
+        const s = await handle.stat();
+        if (!s.isFile()) throw new Error("Not a file");
 
-    const ext = path.extname(target).toLowerCase();
-    const meta = { rel, size: s.size, ext, mtime: s.mtime.toISOString().slice(0, 10) };
+        const ext = path.extname(target).toLowerCase();
+        const meta = { rel, size: s.size, ext, mtime: s.mtime.toISOString().slice(0, 10) };
 
-    if (IMAGE_EXT.has(ext)) return { ...meta, kind: "image", truncated: false };
+        if (IMAGE_EXT.has(ext)) return { ...meta, kind: "image", truncated: false };
 
-    const buf = await readFile(target);
+        // Look ahead one complete UTF-8 character / UTF-16 surrogate pair.
+        const buf = await readPrefix(handle, MAX_TEXT + 4);
+        const truncated = buf.length > MAX_TEXT;
 
-    // UTF-16 declares itself with a BOM. Without this it decodes as UTF-8 and
-    // renders as NUL-riddled mojibake, making a readable source look corrupt.
-    const utf16 =
-        buf.length >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))
-            ? buf[0] === 0xff
-                ? "utf16le"
-                : "utf16be"
-            : null;
-    if (utf16) {
-        const slice = buf.subarray(0, MAX_TEXT);
-        const le = utf16 === "utf16le" ? slice : slice.swap16();
-        return { ...meta, kind: "text", encoding: utf16, truncated: buf.length > MAX_TEXT, text: le.toString("utf16le").replace(/^\uFEFF/, "") };
-    }
-
-    // Trust the bytes over the extension: an unknown extension holding text is
-    // still readable, and a .md holding binary is not.
-    if (!TEXT_EXT.has(ext) && looksBinary(buf)) return { ...meta, kind: "binary", truncated: false };
-
-    const truncated = buf.length > MAX_TEXT;
-    // Decoding a hard byte slice corrupts the character straddling the cut, so
-    // walk back to a UTF-8 boundary before decoding.
-    let end = Math.min(buf.length, MAX_TEXT);
-    if (truncated) {
-        let back = 0;
-        while (end > 0 && back < 4 && (buf[end] & 0xc0) === 0x80) {
-            end--;
-            back++;
+        // UTF-16 declares itself with a BOM.
+        const utf16 =
+            buf.length >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))
+                ? buf[0] === 0xff
+                    ? "utf16le"
+                    : "utf16be"
+                : null;
+        if (utf16) {
+            let end = Math.min(buf.length, MAX_TEXT);
+            end -= end % 2;
+            if (truncated && end >= 2 && end + 2 <= buf.length) {
+                const unit = (offset) => utf16 === "utf16le" ? buf.readUInt16LE(offset) : buf.readUInt16BE(offset);
+                const last = unit(end - 2);
+                const next = unit(end);
+                if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end -= 2;
+            }
+            const slice = buf.subarray(0, end);
+            const le = utf16 === "utf16le" ? slice : slice.swap16();
+            return { ...meta, kind: "text", encoding: utf16, truncated, text: le.toString("utf16le").replace(/^\uFEFF/, "") };
         }
+
+        // Unknown extensions may still contain text; avoid decoding binary.
+        if (!TEXT_EXT.has(ext) && looksBinary(buf)) return { ...meta, kind: "binary", truncated: false };
+
+        let end = Math.min(buf.length, MAX_TEXT);
+        if (truncated) {
+            let back = 0;
+            while (end > 0 && back < 4 && (buf[end] & 0xc0) === 0x80) {
+                end--;
+                back++;
+            }
+        }
+        return { ...meta, kind: "text", truncated, text: buf.subarray(0, end).toString("utf8").replace(/^\uFEFF/, "") };
+    } finally {
+        await handle.close();
     }
-    return { ...meta, kind: "text", truncated, text: buf.subarray(0, end).toString("utf8").replace(/^\uFEFF/, "") };
 }
 
 /** Raw bytes for inline image preview. */
@@ -677,12 +710,19 @@ const MAX_RAW = 25 * 1024 * 1024;
 
 export async function readRoomBytes(roomPath, rel) {
     const target = await assertInsideReal(roomPath, resolveInside(roomPath, rel));
-    const s = await stat(target);
-    if (!s.isFile()) throw new Error("Not a file");
-    const ext = path.extname(target).toLowerCase();
-    if (!IMAGE_EXT.has(ext)) throw new Error("Refused: not an image");
-    if (s.size > MAX_RAW) throw new Error("Refused: file exceeds the preview limit");
-    return { buf: await readFile(target), mime: MIME[ext] || "application/octet-stream" };
+    const handle = await open(target, "r");
+    try {
+        const s = await handle.stat();
+        if (!s.isFile()) throw new Error("Not a file");
+        const ext = path.extname(target).toLowerCase();
+        if (!IMAGE_EXT.has(ext)) throw new Error("Refused: not an image");
+        if (s.size > MAX_RAW) throw new Error("Refused: file exceeds the preview limit");
+        const buf = await readPrefix(handle, MAX_RAW + 1);
+        if (buf.length > MAX_RAW) throw new Error("Refused: file exceeds the preview limit");
+        return { buf, mime: MIME[ext] || "application/octet-stream" };
+    } finally {
+        await handle.close();
+    }
 }
 
 /**

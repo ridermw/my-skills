@@ -29,7 +29,7 @@ open the project-room canvas for ~/project-rooms/<room>
 | **Overview** | Is this a valid room? What drift is there — inbox backlog, expired renders, inventory rows pointing at missing files, sources not safe to cite as current? |
 | **Sources** | The inventory, faceted by Authority and Lifecycle, with full-text search. |
 | **Room docs** | README, change log, conflict log, duplicate log, missing context. |
-| **Teams** | One card per *conversation*: coverage age, partial captures, missing per-occurrence artifacts, known gaps, and captures the inventory holds but the chat index never registered. |
+| **Teams** | One card per *conversation*: cadence-aware coverage age, partial captures, missing artifacts, known gaps, and index reconciliation needs. Only actual capture gaps enter the sweep plan; disputed identities and incomplete index records stay visible without inventing missing captures. |
 | **Files** | Every file in the room, with markdown/CSV rendered and images previewed. |
 
 ## Theming
@@ -45,31 +45,60 @@ theme automatically** — change the theme in GitHub and the whole surface
 re-cascades with no JavaScript, no reload, and no loss of scroll position or
 selection.
 
-This replaced an earlier per-canvas picker backed by a bundled 54-theme
-catalogue. That approach is deprecated across the canvas ecosystem: of the
-showcase extensions that handle theming, none still ship a picker, and several
-return `410 theme_selection_removed` from their old endpoints. Dropping it
-removed the catalogue, the persistence file, two API routes and the picker UI.
-
 ## Read-only, by design
 
-The canvas never writes to the room and holds no credentials. Its action
+The canvas never writes to the room and holds no external-service credentials. Its action
 buttons (Ingest inbox, Refresh room, Sweep, Re-capture, Save a nugget, Make a
 task, Reconcile index) **generate an instruction for you to read and run** —
-they name the relevant `project-room` operation file rather than restating the
-procedure, so the skill stays the single source of truth.
+Index, Refresh and reconciliation name the relevant `project-room` operation
+file, so the skill owns those maintenance procedures.
 
 Room content is treated as untrusted data throughout: it is HTML-escaped in the
-UI, and quoted inside a labelled data block in every generated prompt, so a
-source cannot pose as an instruction to whichever agent you paste it into.
+UI and quoted in generated prompts. Sweep plans carry bounded, escaped JSON in
+a labelled untrusted-data block; inspect generated instructions before running
+them with an authenticated agent.
+
+## Local access
+
+Each server creates a private launch URL with two random capabilities in its
+fragment. The public HTML contains neither capability nor the selected room
+path. Keep the complete launch link private: the full capability authorizes
+room selection and file reads through the API header.
+
+Image URLs use a separate image-only capability. It cannot authorize room,
+folder, or text-file access, and query tokens never authorize the main API.
+Cross-site requests are refused even with a capability. This is an HTTP
+access boundary, not isolation from processes that can inspect the CLI's
+memory or private launch-link records.
+
+Manifest-selected files must remain inside the room, including through
+symlinks. Source paths use consistent separators, file previews are bounded,
+and unrecognised source layouts are reported as unverified rather than clean.
 
 ## Testing
 
+From the repository root, install development dependencies and run the
+filesystem/parser, real HTTP, SDK-action, and browser regressions:
+
+```bash
+npm ci
+npm run test:canvas
+npm run test:canvas:browser
+```
+
+The tests use Node's built-in runner (Node 22.15 or newer) and Playwright with
+synthetic rooms. If Chromium is not installed, run
+`npx playwright install chromium` before the browser suite. These dependencies
+are development-only; copying this extension does not require an npm install.
+
 `serve.mjs` runs the same request handler as the real extension (both delegate
-to `routes.mjs`, so the test server cannot drift from production):
+to `routes.mjs`). From this extension's directory:
 
 ```bash
 node serve.mjs 7900 /path/to/room   # a specific room
 node serve.mjs 7900 -               # no room, exercises the picker
 PROJECT_ROOM=/path/to/room node serve.mjs 7900
 ```
+
+Open the complete private URL printed by the launcher, including its fragment.
+Opening only the loopback origin does not authorize access to a room.

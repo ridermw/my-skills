@@ -5,11 +5,11 @@
 // read-only API over the room folder; the UI in ui.mjs consumes it.
 
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { readRoom } from "./room.mjs";
 import { handleRequest } from "./routes.mjs";
+import { createRoomState, canvasUrl } from "./capability.mjs";
 
 const servers = new Map(); // instanceId -> { server, url, state }
 
@@ -26,14 +26,14 @@ function untrusted(v, max = 1200) {
 
 
 async function startServer(instanceId, initialPath) {
-    const state = { roomPath: initialPath || "", token: randomBytes(24).toString("hex") };
+    const state = createRoomState(initialPath || "");
 
     const server = createServer((req, res) => handleRequest(state, req, res));
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const addr = server.address();
     const port = typeof addr === "object" && addr ? addr.port : 0;
-    return { server, url: `http://127.0.0.1:${port}/`, state };
+    return { server, url: canvasUrl(port, state), state };
 }
 
 const session = await joinSession({
@@ -87,11 +87,15 @@ const session = await joinSession({
                         properties: {
                             query: { type: "string", description: "Free-text match across every inventory column." },
                             authority: { type: "string", description: "Exact authority filter, e.g. Primary." },
-                            lifecycle: { type: "string", description: "Exact lifecycle filter, e.g. Active." },
+                            lifecycle: { type: "string", description: "Exact lifecycle filter, e.g. current." },
                             limit: { type: "number", description: "Max rows to return. Default 20." },
                         },
                     },
                     handler: async (ctx) => {
+                        const limit = ctx.input?.limit === undefined ? 20 : ctx.input.limit;
+                        if (!Number.isSafeInteger(limit) || limit < 0) {
+                            return { ok: false, error: "limit must be a non-negative safe integer" };
+                        }
                         const entry = servers.get(ctx.instanceId);
                         const p = entry?.state.roomPath;
                         if (!p) return { ok: false, error: "Canvas has no room loaded" };
@@ -100,7 +104,6 @@ const session = await joinSession({
                             .toLowerCase()
                             .split(/\s+/)
                             .filter(Boolean);
-                        const limit = Number(ctx.input?.limit) || 20;
                         const rows = room.sources
                             .filter((s) => {
                                 if (ctx.input?.authority && s.Authority !== ctx.input.authority) return false;

@@ -5,8 +5,8 @@
 // as the real extension. Do not add routes here.
 
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
 import { handleRequest } from "./routes.mjs";
+import { createRoomState, canvasUrl } from "./capability.mjs";
 
 const port = Number(process.argv[2] || 7900);
 const roomArg = process.argv.length > 3 ? process.argv[3] : undefined;
@@ -14,8 +14,9 @@ const roomArg = process.argv.length > 3 ? process.argv[3] : undefined;
 // else boot with no room so the picker is exercised.
 const roomPath = roomArg === "-" ? "" : roomArg || process.env.PROJECT_ROOM || "";
 
-const state = { roomPath, token: randomBytes(24).toString("hex") };
+const state = createRoomState(roomPath);
 
-createServer((req, res) => handleRequest(state, req, res)).listen(port, "127.0.0.1", () =>
-    console.log("project-room canvas on http://127.0.0.1:" + port + "/")
-);
+const server = createServer((req, res) => handleRequest(state, req, res));
+server.listen(port, "127.0.0.1", () => {
+    console.log("project-room canvas on " + canvasUrl(server.address().port, state));
+});
