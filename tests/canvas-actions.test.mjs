@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { makeRoom } from "./helpers/canvas-fixture.mjs";
 
 const sdk = "data:text/javascript," + encodeURIComponent(`
@@ -22,6 +24,19 @@ const canvas = globalThis.canvasTestRegistration;
 delete globalThis.canvasTestRegistration;
 const search = canvas.actions.find((action) => action.name === "find_sources").handler;
 let nextInstance = 0;
+
+test("authority schema example matches a canonical inventory through the real action", async (t) => {
+    const action = canvas.actions.find((entry) => entry.name === "find_sources");
+    assert.match(action.inputSchema.properties.authority.description, /e\.g\. authoritative/);
+    const { root, instanceId } = await openFixture(t);
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"),
+        "Source ID,Path,Authority,Current or superseded\n"
+        + "S001,00_originals/source-1.txt,authoritative,current\n"
+        + "S002,00_originals/source-2.txt,supporting,current\n");
+    const result = await search({ instanceId, input: { authority: "authoritative" } });
+    assert.equal(result.matched, 1);
+    assert.deepEqual(result.rows.map((row) => row.id), ["S001"]);
+});
 
 async function openFixture(t) {
     const root = await makeRoom(t, 25);

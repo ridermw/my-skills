@@ -86,7 +86,7 @@ const session = await joinSession({
                         type: "object",
                         properties: {
                             query: { type: "string", description: "Free-text match across every inventory column." },
-                            authority: { type: "string", description: "Exact authority filter, e.g. Primary." },
+                            authority: { type: "string", description: "Exact authority filter, e.g. authoritative." },
                             lifecycle: { type: "string", description: "Exact lifecycle filter, e.g. current." },
                             limit: { type: "number", description: "Max rows to return. Default 20." },
                         },

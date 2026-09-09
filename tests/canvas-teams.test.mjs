@@ -82,7 +82,7 @@ for (const id of ["19:owner_aaa", betaId]) {
     });
 }
 
-for (const id of [alphaId, "19:owner_\u2026aaa@unq.gbl.spaces"]) {
+for (const id of [alphaId, "19:owner_\u2026aaa@unq.gbl.spaces", "19:owner_...aaa@unq.gbl.spaces"]) {
     test(`exact IDs and documented ordered ellipsis fragments match: ${id}`, () => {
         const parsed = teams.parseChatIndex(chatIndex({
             quickRows: [`| 1 | Renamed topic | \`${id}\` | Group | S001 | complete |`],
@@ -95,6 +95,41 @@ for (const id of [alphaId, "19:owner_\u2026aaa@unq.gbl.spaces"]) {
         assert.deepEqual(parsed.identityConflicts, []);
     });
 }
+
+for (const marker of ["...", "\u2026"]) {
+    test(`canonical chat abbreviation ${marker} preserves mismatches, ambiguity and unknown full IDs`, () => {
+        const abbreviation = `19:owner_${marker}@unq.gbl.spaces`;
+        const row = (n, id) => `| ${n} | Alpha | \`${id}\` | Group | S999 | complete |`;
+        const parsed = teams.parseChatIndex(chatIndex({
+            quickRows: [row(1, abbreviation), row(2, abbreviation)],
+            details: [detail(1, "Alpha", alphaId), detail(2, "Beta", betaId)],
+        }));
+        assert.deepEqual(parsed.identityConflicts.map((c) => c.reason), ["ambiguous-chat-id", "ambiguous-chat-id"]);
+        assert.ok(parsed.conversations.every((c) => c.fullyCaptured === undefined));
+        const mismatch = teams.parseChatIndex(chatIndex({
+            quickRows: [row(1, `19:owner_${marker}bbb@unq.gbl.spaces`)],
+            details: [detail(1, "Alpha", alphaId)],
+        }));
+        assert.equal(mismatch.identityConflicts[0].reason, "unmatched-chat-id");
+        const unknown = teams.parseChatIndex(chatIndex({ quickRows: [row(1, abbreviation)] }));
+        assert.equal(unknown.conversations[0].chatId, null);
+        assert.equal(unknown.conversations[0].chatIdShort, abbreviation);
+    });
+}
+
+test("canonical quick-map header order and ASCII ellipsis match the documented shape", () => {
+    const parsed = teams.parseChatIndex([
+        "# Chat index", "## Quick map",
+        "| # | `chat_id` | Conversation | Type | Sources | Fully captured? |",
+        "|---|---|---|---|---|---|",
+        "| 1 | `19:...@unq.gbl.spaces` | Name | 1:1 | `MEMO-S004`, `MEMO-S021` | ❌ |",
+        "## 1 · Name — 1:1", `chat_id: \`${alphaId}\``,
+    ].join("\n"));
+    assert.deepEqual(parsed.identityConflicts, []);
+    assert.equal(parsed.conversations[0].chatId, alphaId);
+    assert.deepEqual(parsed.conversations[0].quickSourceIds, ["MEMO-S004", "MEMO-S021"]);
+    assert.equal(parsed.conversations[0].fullyCaptured, false);
+});
 
 test("all abbreviated ID fragments must match, not only their shared prefix", () => {
     const parsed = teams.parseChatIndex(chatIndex({

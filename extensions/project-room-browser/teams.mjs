@@ -267,7 +267,7 @@ export function parseChatIndex(text) {
             if (quickOrdinals.has(q.ordinal)) throw new Error("Invalid chat index: duplicate quick-map ordinal " + q.ordinal);
             quickOrdinals.add(q.ordinal);
         }
-        if (q.chatIdShort && !q.chatIdShort.includes("\u2026")) {
+        if (q.chatIdShort && !normaliseChatId(q.chatIdShort).includes("\u2026")) {
             if (quickChatIds.has(q.chatIdShort)) throw new Error("Invalid chat index: duplicate quick-map chat ID");
             quickChatIds.add(q.chatIdShort);
         }
@@ -331,7 +331,7 @@ export function parseChatIndex(text) {
                 index: q.ordinal != null && !byOrdinal ? q.ordinal :
                     conversationIndex(String(conversations.reduce((max, c) => Math.max(max, c.index), 0) + 1)),
                 name: q.name,
-                chatId: q.chatIdShort && !q.chatIdShort.includes("\u2026") ? q.chatIdShort : null,
+                chatId: q.chatIdShort && !normaliseChatId(q.chatIdShort).includes("\u2026") ? q.chatIdShort : null,
                 chatIdShort: q.chatIdShort || null,
                 type: q.type,
                 fullyCaptured: q.fullyCaptured,
@@ -352,6 +352,10 @@ export function parseChatIndex(text) {
     return { conversations, knownGaps, recipe, quickMap, identityConflicts };
 }
 
+function normaliseChatId(value) {
+    return String(value || "").replace(/\s/g, "").toLowerCase().replace(/\.\.\./g, "\u2026");
+}
+
 /**
  * Compare a full chat_id against the quick map's abbreviated form.
  *
@@ -362,9 +366,8 @@ export function parseChatIndex(text) {
  * short form to appear in the full id, in order.
  */
 function sameChat(full, short) {
-    const norm = (s) => String(s || "").replace(/\s/g, "").toLowerCase();
-    const a = norm(full);
-    const b = norm(short);
+    const a = normaliseChatId(full);
+    const b = normaliseChatId(short);
     if (!a || !b) return false;
     if (a === b) return true;
     if (!b.includes("\u2026")) return false;

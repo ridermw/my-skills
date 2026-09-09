@@ -1156,10 +1156,8 @@ function buildRefreshPrompt(d) {
     ].join("\n");
 }
 
-function buildReconcilePrompt(c, roomName, root) {
+function reconciliationData(c, roomName, root) {
     return [
-        "Run the project-room skill's Index operation (index.md) to reconcile the chat index and source inventory.",
-        "",
         UNTRUSTED_BANNER,
         "room: " + q(roomName),
         "room folder: " + qPath(root),
@@ -1172,6 +1170,14 @@ function buildReconcilePrompt(c, roomName, root) {
             (u) => "unregistered source: " + q(u.id) + "  date: " + q(u.date) + "  type: " + q(u.type) + "  path: " + qPath(u.path)
         ),
         UNTRUSTED_END,
+    ];
+}
+
+function buildReconcilePrompt(c, roomName, root) {
+    return [
+        "Run the project-room skill's Index operation (index.md) to reconcile the chat index and source inventory.",
+        "",
+        ...reconciliationData(c, roomName, root),
         "",
         "Follow index.md exactly, including its snapshot and review gate.",
         "Inspect the existing sources to establish conversation identity and coverage before changing either index.",
@@ -1227,8 +1233,14 @@ function buildTaskPrompt(c, roomName, root) {
     if (c.needsReconciliation && !c.needsRecapture) {
         return [
             "Create a task to reconcile conversation coverage records, not to re-capture the thread.",
+            "Record follow-up work only; execution and room changes belong to the task's assignee.",
             "",
-            buildReconcilePrompt(c, roomName, root),
+            ...reconciliationData(c, roomName, root),
+            "",
+            "Done when:",
+            "- Conversation identity and coverage are established from the existing sources, without guessing from incomplete metadata.",
+            "- The inventory and chat index agree with the source evidence, including previously unregistered captures.",
+            "- The assignee follows the Index operation (index.md), with its snapshot and review gate; required human approval is recorded.",
         ].join("\n");
     }
     const why = [];
@@ -1237,7 +1249,8 @@ function buildTaskPrompt(c, roomName, root) {
     for (const m of c.missingArtifacts || []) why.push("missing " + m.label + " for " + m.date);
     return [
         "Create a task to bring a Teams thread back into coverage.",
-        c.needsReconciliation ? "Reconcile the existing coverage records with index.md before collecting missing evidence." : "",
+        "Record follow-up work only; execution and room changes belong to the task's assignee.",
+        c.needsReconciliation ? "Task dependency: existing coverage records are reconciled through index.md before missing evidence is collected." : "",
         "",
         UNTRUSTED_BANNER,
         "Title: Re-capture the conversation named " + q(c.name) + " for room " + q(roomName),
@@ -1252,7 +1265,7 @@ function buildTaskPrompt(c, roomName, root) {
         "- The thread is captured through today, with every page followed.",
         "- Transcript, Copilot insights and recap are present for each meeting occurrence, or explicitly recorded as unavailable.",
         "- Shared files, screenshots and diagrams are saved into the room and inventoried.",
-        "- The project's Index operation records the capture in the room's configured inventory and conversation index.",
+        "- The project's Index operation (index.md), including its snapshot and review gate, records the capture in the configured inventory and conversation index.",
     ]
         .filter(Boolean)
         .join("\n");

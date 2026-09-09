@@ -442,6 +442,39 @@ test("an inbox file contributes only one Overview flag", async (t) => {
     assert.equal(await page.locator("#tab-overview .n").textContent(), "1 flag");
 });
 
+test("task prompts describe follow-up without embedding an executable workflow", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    const prompts = await page.evaluate(() => {
+        const c = {
+            name: "TASK_CONVERSATION", chatId: "19:task-thread", sourceIds: ["TASK_SOURCE"],
+            lastCaptured: "2026-09-01", isStale: true, daysSinceCapture: 8,
+            unregistered: [{ id: "TASK_UNREGISTERED", path: "01_inbox/task.json" }],
+        };
+        return {
+            reconciliation: buildTaskPrompt({ ...c, needsReconciliation: true }, "TASK_ROOM", "/TASK_ROOT"),
+            recapture: buildTaskPrompt({ ...c, needsRecapture: true }, "TASK_ROOM", "/TASK_ROOT"),
+            mixed: buildTaskPrompt({ ...c, needsRecapture: true, needsReconciliation: true }, "TASK_ROOM", "/TASK_ROOT"),
+            runnable: buildReconcilePrompt(c, "TASK_ROOM", "/TASK_ROOT"),
+        };
+    });
+    for (const name of ["reconciliation", "recapture", "mixed"]) {
+        const text = prompts[name];
+        const start = text.indexOf("--- BEGIN ROOM DATA ");
+        const end = text.indexOf("--- END ROOM DATA ---");
+        assert.ok(start >= 0 && end > start);
+        const trusted = text.slice(0, start) + text.slice(end + "--- END ROOM DATA ---".length);
+        assert.match(trusted, /^Create a task/);
+        assert.match(trusted, /Record follow-up work only/);
+        assert.doesNotMatch(trusted, /(^|\n)(Run |Follow index\.md|Inspect the existing|Reconcile the existing|Do not draft anything, and STOP)/);
+        assert.doesNotMatch(trusted, /TASK_(ROOM|ROOT|CONVERSATION|SOURCE|UNREGISTERED)/);
+        assert.match(trusted, /Done when:/);
+    }
+    assert.match(prompts.reconciliation, /TASK_UNREGISTERED/);
+    assert.match(prompts.mixed, /Task dependency:/);
+    assert.match(prompts.runnable, /^Run the project-room skill's Index operation/);
+});
+
 test("tabs retain focus and support a single roving keyboard stop", async (t) => {
     const root = await makeRoom(t);
     const { page } = await openPage(t, root);

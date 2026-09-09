@@ -46,6 +46,8 @@ before actions appear. Missing occurrence artifacts stay actionable unless the
 record rules out retrieval or the occurrence is still in the future.
 Conversation identity comes from declared `chat_id` metadata, not incidental
 references in notes.
+ASCII `...` and Unicode ellipses follow the same abbreviation rules, without
+promoting an abbreviated value to a full chat ID.
 
 ## Screenshot
 
@@ -76,6 +78,8 @@ Index, Refresh and reconciliation name the relevant `project-room` operation
 file, so the skill owns those maintenance procedures.
 Sweep registration and reconciliation also route through Index, including its
 maintenance snapshot and human review gate.
+Make a task records follow-up work and completion criteria, rather than asking
+the agent to perform that maintenance immediately.
 
 Room content is treated as untrusted data throughout: it is HTML-escaped in the
 UI, and dynamic context stays inside labelled data blocks in every generated
