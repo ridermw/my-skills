@@ -48,10 +48,10 @@ such repos in the report and stop.
    them. If `root` is itself a clone *and* holds nested clones, both levels are
    in scope and every one of them appears in the report — nothing is updated
    invisibly, and every update is still fast-forward-only.
-2. **Read local state and fetch only needed remotes.** Read the current branch
-   and dirty flag (`git status --porcelain`). Confirm an `origin` remote exists.
-   Everything here resolves through `origin`, so
-   check `git remote get-url origin`: a clone whose remote is named `upstream`
+2. **Read local state and fetch only needed remotes.** Read the current branch,
+   HEAD commit, and dirty flag (`git status --porcelain`). Confirm an `origin`
+   remote exists. Everything here resolves through `origin`, so check
+   `git remote get-url origin`: a clone whose remote is named `upstream`
    would otherwise pass a bare "some remote exists" guard and then be
    misreported as `no default branch`. Then `git fetch --prune --quiet origin`,
    plus the current branch's tracking remote when needed for `current-branch`
@@ -87,6 +87,9 @@ such repos in the report and stop.
    from the difference. Never report success on exit code alone: `merge --ff-only`
    and `fetch <b>:<b>` both exit 0 when nothing moved, so an exit-code-only check
    cannot tell `advanced` from `up-to-date`.
+   Immediately before any branch update, re-read the checkout branch, HEAD,
+   and working tree. Require the original branch/HEAD and a clean tree;
+   otherwise report `checkout changed (skipped)` without retrying that repo.
    - **Dirty** working tree → do not pull. Record `dirty (skipped), N behind`,
      counting with `git rev-list --count HEAD..<verified-commit>` for its
      upstream, or the default branch when no upstream is configured. Report a
@@ -113,7 +116,8 @@ such repos in the report and stop.
    `advanced N commits` · `up-to-date` · `created local <default>` ·
    `dirty (skipped), N behind` · `diverged (needs manual merge)` ·
    `in use by another worktree (skipped)` · `detached (skipped)` ·
-   `no upstream (skipped)` · `no default branch` · `error: <reason>`.
+   `no upstream (skipped)` · `checkout changed (skipped)` ·
+   `no default branch` · `error: <reason>`.
    When the default branch was updated while another branch is checked out,
    suffix `(on <current>)`.
 
@@ -152,6 +156,8 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
   [ -z "$cur" ] && { r "$name" "detached" "detached (skipped)"; continue; }
   target="$cur"
   git -C "$repo" remote get-url origin >/dev/null 2>&1 || { r "$name" "$cur" "error: no origin remote"; continue; }
+  if initial_head="$(git -C "$repo" rev-parse --verify HEAD)"; then :;
+  else error "cannot read checkout HEAD" ""; continue; fi
   # Git diagnostics stay on stderr, never inside values parsed as data.
   if dirty="$(git -C "$repo" status --porcelain)"; then :;
   else error "cannot read working-tree state" ""; continue; fi
@@ -217,6 +223,16 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
       else error "cannot compare history" ""; fi
       continue
     fi
+  fi
+  if current_branch="$(git -C "$repo" branch --show-current)"; then :;
+  else error "cannot revalidate checkout branch" ""; continue; fi
+  if current_head="$(git -C "$repo" rev-parse --verify HEAD)"; then :;
+  else error "cannot revalidate checkout HEAD" ""; continue; fi
+  if current_dirty="$(git -C "$repo" status --porcelain)"; then :;
+  else error "cannot revalidate working tree" ""; continue; fi
+  if [ "$current_branch" != "$cur" ] || [ "$current_head" != "$initial_head" ] ||
+     [ -n "$current_dirty" ]; then
+    r "$name" "$target" "checkout changed (skipped)"; continue
   fi
   if [ "$target" = "$cur" ]; then
     if err="$(git -C "$repo" merge --ff-only "$desired" --quiet 2>&1)"; then :;

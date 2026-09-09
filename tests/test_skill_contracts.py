@@ -97,6 +97,20 @@ class SyncReposTests(IsolatedFixture):
         self.assertEqual(len(rows), 1, result.stdout)
         return rows[0].split("\t", 2)[2]
 
+    def change_after_remote_read(self, change):
+        self.script = """
+git() {
+  local rc
+  command git "$@"
+  rc=$?
+  if [ "${3:-}" = ls-remote ] && [ "$rc" -eq 0 ]; then
+    """ + change + """
+    rc=$?
+  fi
+  return "$rc"
+}
+""" + self.script
+
     def test_current_branch_advances(self):
         tip = self.advance()
         self.assertEqual(self.sync(), "advanced 1 commits")
@@ -244,6 +258,38 @@ class SyncReposTests(IsolatedFixture):
         (self.repo / "fixture.txt").write_text("unsaved user work\n")
         self.assertEqual(self.sync("default-branch"), "dirty (skipped), 0 behind")
         self.assertEqual(self.git(self.repo, "rev-parse", "origin/main"), self.original)
+
+    def test_branch_switch_during_remote_read_is_skipped(self):
+        self.git(self.repo, "branch", "feature")
+        self.advance()
+        self.change_after_remote_read('command git -C "$2" switch --quiet feature')
+        result = self.sync()
+        self.assertEqual(self.git(self.repo, "branch", "--show-current"), "feature")
+        self.assertEqual(self.git(self.repo, "rev-parse", "feature"), self.original)
+        self.assertEqual(self.git(self.repo, "rev-parse", "main"), self.original)
+        self.assertEqual(result, "checkout changed (skipped)")
+
+    def test_new_worktree_changes_during_remote_read_are_preserved(self):
+        self.advance()
+        self.change_after_remote_read(
+            'printf "%s\\n" "concurrent user work" > "$2/concurrent.txt"'
+        )
+        result = self.sync()
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), self.original)
+        self.assertEqual((self.repo / "concurrent.txt").read_text(), "concurrent user work\n")
+        self.assertEqual(result, "checkout changed (skipped)")
+
+    def test_clean_head_movement_during_remote_read_is_preserved(self):
+        middle = self.advance()
+        self.commit(self.seed, "second remote advance")
+        self.git(self.seed, "push", "--quiet", "origin", "main")
+        self.change_after_remote_read(
+            f'command git -C "$2" merge --ff-only --quiet "{middle}"'
+        )
+        result = self.sync()
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), middle)
+        self.assertEqual(self.git(self.repo, "status", "--porcelain"), "")
+        self.assertEqual(result, "checkout changed (skipped)")
 
     def test_index_lock_is_an_error_not_divergence(self):
         self.advance()
