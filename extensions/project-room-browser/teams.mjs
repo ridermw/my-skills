@@ -637,7 +637,7 @@ export function sweepPlan(health, { roomName = "this room" } = {}) {
     ];
     if (!targets.length) {
         lines.push("No conversation currently has evidence requiring re-capture.");
-        lines.push("Reconcile index/detail gaps and uncertain completeness; no re-capture targets is not proof of complete coverage.");
+        lines.push("Index/detail gaps and uncertain completeness still need reconciliation; no re-capture targets is not proof of complete coverage.");
     } else {
         lines.push("Re-capture only the listed targets, newest page first, and follow every nextLink.");
         lines.push("Resolve exact chat IDs before fetching; never guess identities from names or truncated/abbreviated values.");
@@ -646,9 +646,11 @@ export function sweepPlan(health, { roomName = "this room" } = {}) {
         lines.push("- Use the room's own re-capture tooling; never hand-transcribe a capture.");
         lines.push("- If a response reports hasMoreResults, follow nextLink and merge every page.");
         lines.push("- Record the resulting complete: flag from the LAST page, not the first.");
-        lines.push("- Write new captures to the inbox, then update the inventory and the chat index.");
+        lines.push("- Write new captures to the inbox for Index to register.");
     }
-    lines.push("Reconcile unattributed captures with the index; they are not re-capture targets.");
+    lines.push("Use the project-room skill's Index operation (index.md) for capture registration and any reconciliation, including unattributed captures.");
+    lines.push("Follow index.md exactly, including its maintenance snapshot and STOP at the review gate; do not draft or mark the room clean without human approval.");
+    lines.push("Unattributed captures are reconciliation work for Index, not re-capture targets.");
     lines.push("All targets are listed. Supporting collections report total and omitted counts; truncated strings are marked.");
     lines.push("Reconcile omitted or truncated supporting data in the room before relying on it or declaring coverage complete.");
     lines.push("");

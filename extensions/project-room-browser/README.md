@@ -74,6 +74,8 @@ buttons (Ingest inbox, Refresh room, Sweep, Re-capture, Save a nugget, Make a
 task, Reconcile index) **generate an instruction for you to read and run** —
 Index, Refresh and reconciliation name the relevant `project-room` operation
 file, so the skill owns those maintenance procedures.
+Sweep registration and reconciliation also route through Index, including its
+maintenance snapshot and human review gate.
 
 Room content is treated as untrusted data throughout: it is HTML-escaped in the
 UI, and dynamic context stays inside labelled data blocks in every generated
@@ -87,6 +89,9 @@ Agent source searches return the full matched count alongside the limited rows.
 Room selection also preserves the entered path's whitespace. File previews keep
 their Back control during loading and errors, returning keyboard focus to the
 file tree without accepting a late response.
+View updates preserve logical keyboard focus and text selection, or move to a
+visible destination control. Date sorting uses the same calendar validation as
+coverage; unusable dates stay last in both directions.
 
 ## Local access
 

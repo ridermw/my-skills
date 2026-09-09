@@ -1414,3 +1414,23 @@ test("declared detail identity uniqueness rejects one chat ID under multiple ord
         details: [detail(1, "Alpha", alphaId), detail(2, "Renamed Alpha", alphaId)],
     })), /duplicate detail chat ID/i);
 });
+
+for (const mode of ["clean", "reconciliation", "recapture"]) {
+    test(`sweep Index ownership preserves the snapshot and review gate for ${mode}`, () => {
+        const health = mode === "reconciliation"
+            ? teams.teamsHealth(teams.parseChatIndex(chatIndex({
+                quickRows: [`| 1 | Alpha | \`${alphaId}\` | Group | S001 | complete |`],
+            })), { now })
+            : healthFor([`| S001 current | full.json | 2026-09-07 | full | ${mode === "recapture" ? "partial" : "complete"} |`]);
+        health.unattributedCaptures = [{ id: "S999", path: "01_inbox/unknown.json" }];
+        const plan = teams.sweepPlan(health);
+        const { data, trusted } = sweepData(plan.text);
+        assert.equal(plan.targets.length, mode === "recapture" ? 1 : 0);
+        assert.equal(data.unattributedCaptures.total, 1);
+        assert.match(trusted, /project-room skill's Index operation \(index\.md\)/);
+        assert.match(trusted, /snapshot/i);
+        assert.match(trusted, /STOP at the review gate/);
+        assert.doesNotMatch(trusted, /then update the inventory and the chat index/);
+        if (mode === "recapture") assert.match(trusted, /new captures to the inbox/);
+    });
+}

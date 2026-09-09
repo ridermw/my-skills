@@ -456,6 +456,292 @@ test("tabs retain focus and support a single roving keyboard stop", async (t) =>
     }
 });
 
+async function keyboardActivate(page, selector) {
+    await page.locator(selector).focus();
+    await page.keyboard.press("Enter");
+}
+
+async function assertKeyboardFocus(page, selector) {
+    assert.equal(await page.locator(selector).evaluate((node) =>
+        node === document.activeElement && node.getClientRects().length > 0), true, `Expected visible focus on ${selector}`);
+}
+
+test("keyboard render focus preserves multi-character query entry and selection ranges", async (t) => {
+    const root = await makeRoom(t, 3);
+    const { page } = await openPage(t, root);
+    await keyboardActivate(page, "#tab-inventory");
+    await page.locator("#q").focus();
+    await page.keyboard.type("sour", { delay: 200 });
+    await page.keyboard.type("ce");
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForFunction(() => Q === "source");
+    await assertKeyboardFocus(page, "#q");
+    assert.deepEqual(await page.locator("#q").evaluate((node) => [node.selectionStart, node.selectionEnd]), [0, 2]);
+    await page.keyboard.type("SO");
+    await page.waitForFunction(() => Q === "SOurce");
+    assert.equal(await page.locator("#q").inputValue(), "SOurce");
+    assert.equal(await page.locator("#list .row").count(), 3);
+});
+
+test("keyboard render focus retains inventory controls and activated row identity", async (t) => {
+    const root = await makeRoom(t, 3);
+    const { page } = await openPage(t, root);
+    await keyboardActivate(page, "#tab-inventory");
+    await page.locator("#sort").focus();
+    await page.keyboard.press("n");
+    await assertKeyboardFocus(page, "#sort");
+    await page.keyboard.press("o");
+    assert.equal(await page.locator("#sort").inputValue(), "date-asc");
+    const facet = '#facets [data-f="Authority"][data-v="Primary"]';
+    await keyboardActivate(page, facet);
+    await assertKeyboardFocus(page, facet);
+    assert.equal(await page.locator(facet).getAttribute("aria-pressed"), "true");
+    await page.keyboard.press("Space");
+    assert.equal(await page.locator(facet).getAttribute("aria-pressed"), "false");
+    await keyboardActivate(page, facet);
+    await keyboardActivate(page, "#clear");
+    await assertKeyboardFocus(page, "#q");
+    await page.keyboard.type("source");
+    await page.waitForFunction(() => Q === "source");
+    await keyboardActivate(page, '#list [data-id="S001"]');
+    await assertKeyboardFocus(page, '#list [data-id="S001"]');
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, '#list [data-id="S002"]');
+    assert.equal(await page.locator('#list [data-id="S002"]').getAttribute("aria-selected"), "true");
+    await page.keyboard.press("Tab");
+    await assertKeyboardFocus(page, "#openfile");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("Source 2 contents"));
+    await assertKeyboardFocus(page, '#tree [data-rel="00_originals/source-2.txt"]');
+    await page.keyboard.press("ArrowDown");
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("Source 3 contents"));
+});
+
+test("keyboard render focus reaches visible narrow drill-down, document and Teams destinations", async (t) => {
+    const root = await makeRoom(t, 2);
+    await mkdir(path.join(root, "99_review"));
+    await mkdir(path.join(root, "01_inbox"));
+    await writeFile(path.join(root, "README.md"), "# Room readme\n");
+    await writeFile(path.join(root, "99_review/change_log.md"), "# Changes\n");
+    await writeFile(path.join(root, "01_inbox/pending.txt"), "Pending source\n");
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+        "Source ID,Path,Authority,Current or superseded",
+        "MEMO-S001,00_originals/source-1.txt,Primary,current",
+        "OTHER-S001,00_originals/source-2.txt,Primary,current",
+        "MEMO-S003,00_originals/missing.txt,Primary,current", "",
+    ].join("\n"));
+    await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+        "# Chat index", "## 1. Alpha", "**chat_id:** `19:alpha@thread.v2`",
+        "| Source | Captured | Complete |", "| --- | --- | --- |",
+        "| MEMO-S001 | 2026-09-01 | yes |",
+        "| MEMO-S999 | 2026-09-01 | yes |", "",
+    ].join("\n"));
+    const { page } = await openPage(t, root, 500);
+    await keyboardActivate(page, '[data-fa="Primary"]');
+    await assertKeyboardFocus(page, "#q");
+    await page.keyboard.type("source-1");
+    await page.waitForFunction(() => Q === "source-1");
+    assert.equal(await page.locator("#list .row").count(), 1);
+    await keyboardActivate(page, "#tab-overview");
+    await keyboardActivate(page, '[data-opensrc="MEMO-S003"]');
+    await assertKeyboardFocus(page, "#backlist");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, '#list [tabindex="0"]');
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, "#backlist");
+    await page.keyboard.press("Tab");
+    await assertKeyboardFocus(page, "#openfile");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("Source 2 contents"));
+    await assertKeyboardFocus(page, "#backtree");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, '#tree [data-rel="00_originals/source-2.txt"]');
+
+    await keyboardActivate(page, "#tab-overview");
+    await keyboardActivate(page, '[data-openpath="01_inbox/pending.txt"]');
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("Pending source"));
+    await assertKeyboardFocus(page, "#backtree");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, '#tree [data-rel="01_inbox/pending.txt"]');
+
+    await keyboardActivate(page, "#tab-review");
+    await keyboardActivate(page, '#doctree [data-k="change_log"]');
+    await assertKeyboardFocus(page, "#backdocs");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, '#doctree [data-k="readme"]');
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, "#backdocs");
+    assert.match(await page.locator("#docviewer").textContent(), /Changes/);
+
+    await keyboardActivate(page, "#tab-teams");
+    await keyboardActivate(page, '.conv [data-src="MEMO-S001"]');
+    await assertKeyboardFocus(page, "#backlist");
+    assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), ["MEMO-S001"]);
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, '#list [data-id="MEMO-S001"]');
+    await page.keyboard.press("Space");
+    await assertKeyboardFocus(page, "#backlist");
+    await keyboardActivate(page, "#tab-teams");
+    await keyboardActivate(page, '.conv [data-src="MEMO-S999"]');
+    await assertKeyboardFocus(page, "#backlist");
+    await page.keyboard.press("Enter");
+    await assertKeyboardFocus(page, "#q");
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Shift+End");
+    await page.keyboard.type("source-1");
+    await page.waitForFunction(() => Q === "source-1");
+    assert.equal(await page.locator("#list .row").getAttribute("data-id"), "MEMO-S001");
+});
+
+test("keyboard render focus respects later user movement during preview and picker requests", async (t) => {
+    const root = await makeRoom(t);
+    const { page, origin } = await openPage(t, root);
+    let releaseFile;
+    let seenFile;
+    const pendingFile = new Promise((resolve) => { releaseFile = resolve; });
+    const requestedFile = new Promise((resolve) => { seenFile = resolve; });
+    await page.route("**/api/file?rel=*", async (route) => {
+        seenFile();
+        await pendingFile;
+        await route.fulfill({ response: await route.fetch() });
+    });
+    await keyboardActivate(page, "#tab-files");
+    await keyboardActivate(page, '#tree [data-rel="00_originals/source-1.txt"]');
+    await requestedFile;
+    try {
+        await page.keyboard.press("Shift+Tab");
+        await page.keyboard.press("Shift+Tab");
+        await assertKeyboardFocus(page, "#switchroom");
+    } finally {
+        releaseFile();
+    }
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("Source 1 contents"));
+    await assertKeyboardFocus(page, "#switchroom");
+
+    let releaseBrowse;
+    let seenBrowse;
+    const pendingBrowse = new Promise((resolve) => { releaseBrowse = resolve; });
+    const requestedBrowse = new Promise((resolve) => { seenBrowse = resolve; });
+    await page.route("**/api/browse*", async (route) => {
+        const dir = new URL(route.request().url()).searchParams.get("dir");
+        if (dir) {
+            seenBrowse();
+            await pendingBrowse;
+        }
+        await route.fulfill({ response: await route.fetch({ url: `${origin}/api/browse?dir=${encodeURIComponent(dir || root)}` }) });
+    });
+    await page.keyboard.press("Enter");
+    await page.locator("#pathin").waitFor();
+    await page.locator(".dirlist button").filter({ hasText: "00_originals" }).focus();
+    await page.keyboard.press("Enter");
+    await requestedBrowse;
+    try {
+        for (let i = 0; i < 20 && await page.evaluate(() => document.activeElement.id !== "pathin"); i++) {
+            await page.keyboard.press("Shift+Tab");
+        }
+        await assertKeyboardFocus(page, "#pathin");
+        await page.keyboard.type("draft");
+        await page.keyboard.press("Home");
+        await page.keyboard.press("Shift+ArrowRight");
+        await page.keyboard.press("Shift+ArrowRight");
+    } finally {
+        releaseBrowse();
+    }
+    await page.waitForFunction((target) => document.querySelector(".crumbs button:last-child")?.dataset.go === target,
+        path.join(root, "00_originals"));
+    await assertKeyboardFocus(page, "#pathin");
+    assert.equal(await page.locator("#pathin").inputValue(), "draft");
+    assert.deepEqual(await page.locator("#pathin").evaluate((node) => [node.selectionStart, node.selectionEnd]), [0, 2]);
+    await page.keyboard.type("DR");
+    assert.equal(await page.locator("#pathin").inputValue(), "DRaft");
+});
+
+test("keyboard render focus supports correcting a picker error and continuing after room opening", async (t) => {
+    const root = await makeRoom(t);
+    const next = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    await page.route("**/api/browse*", (route) => route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } }));
+    await keyboardActivate(page, "#switchroom");
+    await page.locator("#pathin").waitFor();
+    await assertKeyboardFocus(page, "#pathin");
+    const badPath = path.join(root, "missing ");
+    await page.keyboard.type(badPath);
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector(".pickerr")?.textContent.includes("does not exist"));
+    await assertKeyboardFocus(page, "#pathin");
+    assert.equal(await page.locator("#pathin").inputValue(), badPath);
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Shift+End");
+    await page.keyboard.type(next);
+    await page.keyboard.press("Enter");
+    await page.locator(".rail").waitFor();
+    await assertKeyboardFocus(page, "#tab-overview");
+    await page.keyboard.press("ArrowRight");
+    await assertKeyboardFocus(page, "#tab-inventory");
+    assert.equal(await page.locator("#p-inventory").isVisible(), true);
+    assert.equal(await page.evaluate(() => DATA.root), next);
+});
+
+test("keyboard render focus does not replace a newer view with a delayed picker", async (t) => {
+    const root = await makeRoom(t, 2);
+    const { page } = await openPage(t, root);
+    let release;
+    let seen;
+    const pending = new Promise((resolve) => { release = resolve; });
+    const requested = new Promise((resolve) => { seen = resolve; });
+    await page.route("**/api/browse*", async (route) => {
+        seen();
+        await pending;
+        await route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } });
+    });
+    await keyboardActivate(page, "#switchroom");
+    await requested;
+    try {
+        await page.keyboard.press("Shift+Tab");
+        await page.keyboard.press("ArrowRight");
+        await assertKeyboardFocus(page, "#tab-inventory");
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Tab");
+        await assertKeyboardFocus(page, "#q");
+        await page.keyboard.type("source");
+        await page.waitForFunction(() => Q === "source");
+    } finally {
+        const response = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/browse");
+        release();
+        await response;
+    }
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.locator("#p-inventory").isVisible(), true);
+    await assertKeyboardFocus(page, "#q");
+    await page.keyboard.type("-2");
+    await page.waitForFunction(() => Q === "source-2");
+    assert.equal(await page.locator("#list .row").getAttribute("data-id"), "S002");
+});
+
+test("calendar date sorting keeps invalid dates last in both directions with leap dates and ties", async (t) => {
+    const root = await makeRoom(t, 10);
+    const dates = ["2026-02-30", "2024-02-29", "2026-02-28", "2026-13-01", "2026-01-00", "", "not-a-date", "2023-02-29", "2024-02-29", "1970-01-01"];
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+        "Source ID,Path,Date,Authority,Current or superseded",
+        ...dates.map((date, index) => `S${String(index + 1).padStart(3, "0")},00_originals/source-${index + 1}.txt,${date},Primary,current`), "",
+    ].join("\n"));
+    const { page } = await openPage(t, root);
+    await keyboardActivate(page, "#tab-inventory");
+    for (const [sort, expected] of [
+        ["date-desc", ["S003", "S002", "S009", "S010", "S001", "S004", "S005", "S006", "S007", "S008"]],
+        ["date-asc", ["S010", "S002", "S009", "S003", "S001", "S004", "S005", "S006", "S007", "S008"]],
+    ]) {
+        await page.locator("#sort").selectOption(sort);
+        assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), expected);
+    }
+});
+
 test("coverage cards distinguish reconciliation evidence from current coverage", async (t) => {
     const root = await makeRoom(t);
     const { page } = await openPage(t, root);

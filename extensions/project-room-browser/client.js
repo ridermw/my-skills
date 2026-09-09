@@ -223,11 +223,81 @@ async function load(pathOverride) {
 }
 
 /* ---------------- render ---------------- */
+function visibleFocusTarget(el) {
+    return el instanceof HTMLElement && el !== document.body && el !== document.documentElement &&
+        el.isConnected && !el.matches(":disabled") && !el.closest("[hidden], [inert]") &&
+        el.getClientRects().length > 0 && getComputedStyle(el).visibility === "visible";
+}
+
+function captureFocus() {
+    const el = document.activeElement;
+    const data = el.getAttributeNames().filter((name) => name.startsWith("data-"));
+    const attributes = data.length ? data : ["name", "type", "href", "aria-label"].filter((name) => el.hasAttribute(name));
+    const selector = el.id ? "#" + CSS.escape(el.id) : attributes.length
+        ? el.localName + attributes.map((name) => `[${name}="${CSS.escape(el.getAttribute(name))}"]`).join("")
+        : null;
+    return {
+        selector,
+        scope: el.parentElement?.closest("[id]")?.id,
+        fromDetail: !!el.closest(".detail, .viewer"),
+        selection: typeof el.selectionStart === "number"
+            ? { value: el.value, start: el.selectionStart, end: el.selectionEnd, direction: el.selectionDirection }
+            : null,
+    };
+}
+
+function restoreFocus(saved) {
+    // Explicit focus (including a user's newer async interaction) wins.
+    if (!document.hasFocus() || visibleFocusTarget(document.activeElement)) return;
+    const scope = saved.scope ? document.getElementById(saved.scope) : document;
+    const same = saved.selector && scope
+        ? [...scope.querySelectorAll(saved.selector)].find(visibleFocusTarget)
+        : null;
+    const destinations = [
+        "#pathin", ".pane.on .showdetail .backbar button",
+        ...(saved.fromDetail ? ['.pane.on .list [tabindex="0"]', '.pane.on .tree [aria-current="true"]', ".pane.on .tree button"] : []),
+        '#list .row[aria-selected="true"]', '#doctree .doc[aria-current="true"]',
+        '#tree .f[aria-current="true"]', "#q", '#list .row[tabindex="0"]',
+        "#doctree .doc", '#tree .f[tabindex="0"]',
+        '.rail .nav[aria-selected="true"]', ".pane.on", "#roomloading",
+    ];
+    const target = same || destinations
+        .map((selector) => [...document.querySelectorAll(selector)].find(visibleFocusTarget))
+        .find(Boolean);
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    if (same && saved.selection) {
+        same.value = saved.selection.value;
+        same.setSelectionRange(saved.selection.start, saved.selection.end, saved.selection.direction);
+    } else if (typeof target.selectionStart === "number") {
+        target.setSelectionRange(target.value.length, target.value.length);
+    }
+}
+
+let pendingFocus = null;
+function preserveFocus(update) {
+    // Nested renders finish wiring controls and roving tab stops before focus
+    // is restored. Async render phases capture the latest focus at mutation time.
+    if (!pendingFocus) {
+        pendingFocus = captureFocus();
+        queueMicrotask(() => {
+            const saved = pendingFocus;
+            pendingFocus = null;
+            restoreFocus(saved);
+        });
+    }
+    return update();
+}
+
+function replaceContent(el, markup) {
+    preserveFocus(() => { el.innerHTML = markup; });
+}
+
 function render() {
     const d = DATA;
     const flags = overviewFlags(d);
     const nFlags = flags.reduce((total, flag) => total + flag.count, 0);
-    $("#app").innerHTML = `
+    replaceContent($("#app"), `
     <nav class="rail" role="tablist" aria-label="Room views">
       <div class="room">
         <h1>${h(d.name)}</h1>
@@ -258,7 +328,7 @@ function render() {
       <div class="pane ${VIEW === "review" ? "on" : ""}" id="p-review" role="tabpanel" aria-labelledby="tab-review" tabindex="0"></div>
       <div class="pane ${VIEW === "teams" ? "on" : ""}" id="p-teams" role="tabpanel" aria-labelledby="tab-teams" tabindex="0"></div>
       <div class="pane ${VIEW === "files" ? "on" : ""}" id="p-files" role="tabpanel" aria-labelledby="tab-files" tabindex="0"></div>
-    </div>`;
+    </div>`);
     const tabs = [...document.querySelectorAll(".rail .nav")];
     tabs.forEach((b, index) => {
         b.tabIndex = b.dataset.v === VIEW ? 0 : -1;
@@ -399,7 +469,7 @@ function renderOverview(flags) {
     const manifestKeys = ["project", "status", "room_kind", "last_refreshed", "status_verified", "render_expiry_days", "id_prefix"];
 
     const inboxN = (hl.inboxPending || []).length;
-    $("#p-overview").innerHTML = `<div class="scroll">
+    replaceContent($("#p-overview"), `<div class="scroll">
     <div class="teamshead">
       <div><h2 class="head">Room overview</h2>
       <p class="headsub">${h(d.room.note || "")}</p></div>
@@ -522,7 +592,7 @@ function renderOverview(flags) {
             .join("")}
       </table>
     </section>
-  </div>`;
+  </div>`);
 
     // a flagged path jumps straight to the file; a flagged-but-missing file
     // has no file to open, so it jumps to its inventory row instead
@@ -626,8 +696,8 @@ function sortRows(rows) {
     const byDate = (dir) => (a, b) => {
         // A row with no usable date sorts last either way, rather than pretending
         // to be the oldest thing in the room.
-        const da = /^\d{4}-\d{2}-\d{2}$/.test(a.Date || "") ? a.Date : "";
-        const db = /^\d{4}-\d{2}-\d{2}$/.test(b.Date || "") ? b.Date : "";
+        const da = isoDateTime(a.Date) != null ? a.Date : "";
+        const db = isoDateTime(b.Date) != null ? b.Date : "";
         if (!da && !db) return num(a["Source ID"]) - num(b["Source ID"]);
         if (!da) return 1;
         if (!db) return -1;
@@ -649,7 +719,7 @@ function renderInventory() {
     const fields = ["Authority", "Lifecycle", "Relevance", "Change"];
     const active = Object.values(FILTERS).some((v) => v && v.size) || Q;
 
-    $("#p-inventory").innerHTML = `
+    replaceContent($("#p-inventory"), `
     <div class="toolbar">
       <div class="searchrow">
         <label class="sr-only" for="q">Search sources</label>
@@ -701,17 +771,13 @@ function renderInventory() {
         }
       </div>
       <div class="detail" id="detail"></div>
-    </div>`;
+    </div>`);
 
     const q = $("#q");
     q.oninput = debounce(() => {
-        const pos = q.selectionStart;
         Q = q.value;
         delete FILTERS["Source ID"];
         renderInventory();
-        const nq = $("#q");
-        nq.focus();
-        nq.setSelectionRange(pos, pos);
     }, 160);
     $("#sort").onchange = (e) => {
         SORT = e.target.value;
@@ -771,13 +837,9 @@ function renderDetail() {
     if (!el) return;
     const backbar = '<div class="backbar"><button class="btn" type="button" id="backlist">\u2190 All sources</button></div>';
     const s = DATA.sources.find((x) => x["Source ID"] === SEL);
-    if (!s) {
-        el.innerHTML = backbar + '<div class="empty"><strong>Pick a source</strong><br>Its key claims, limitations and intended use appear here, so you can judge whether it is safe to draft from.</div>';
-        return;
-    }
     const meta = ["Source type", "Date", "Owner", "Relevance", "Change"];
     const long = ["Key claims or content", "Limitations", "Intended use", "Review notes"];
-    el.innerHTML = backbar + `
+    replaceContent(el, backbar + (s ? `
     <h3>${h(s["File name"] || s["Source ID"])}</h3>
     <div class="path">${h(s.Path || "")}</div>
     <div class="badges">
@@ -793,7 +855,8 @@ function renderDetail() {
         .filter((k) => s[k])
         .map((k) => `<div class="field"><div class="fk">${h(k)}</div><div class="fv">${h(s[k])}</div></div>`)
         .join("")}
-    ${s.Path ? `<button class="btn" id="openfile">Open file</button>` : ""}`;
+    ${s.Path ? `<button class="btn" id="openfile">Open file</button>` : ""}`
+        : '<div class="empty"><strong>Pick a source</strong><br>Its key claims, limitations and intended use appear here, so you can judge whether it is safe to draft from.</div>'));
     const bl = $("#backlist");
     if (bl) bl.onclick = () => { SEL = null; renderInventory(); };
     const of = $("#openfile");
@@ -812,14 +875,14 @@ function renderReview() {
     const log = d.logs[active];
 
     if (!keys.length) {
-        $("#p-review").innerHTML =
-            '<div class="scroll"><div class="empty"><strong>No room documents</strong><br>room.yaml has no maintenance_links pointing at markdown files.</div></div>';
+        replaceContent($("#p-review"),
+            '<div class="scroll"><div class="empty"><strong>No room documents</strong><br>room.yaml has no maintenance_links pointing at markdown files.</div></div>');
         return;
     }
 
     // Same list+viewer vocabulary as the Files view. These are documents to
     // open, not filters to toggle, so they must not look like the facet chips.
-    $("#p-review").innerHTML = `<div class="filewrap${LOGKEY ? " showdetail" : ""}">
+    replaceContent($("#p-review"), `<div class="filewrap${LOGKEY ? " showdetail" : ""}">
     <div class="tree" id="doctree">
       <div class="grp"><span>Room documents</span><span>${keys.length}</span></div>
       ${keys
@@ -839,7 +902,7 @@ function renderReview() {
               : '<div class="empty"><strong>Pick a document</strong><br>These are the files room.yaml nominates as the room\u2019s own record.</div>'
       }
     </div>
-  </div>`;
+  </div>`);
 
     $("#doctree")
         .querySelectorAll(".f")
@@ -889,7 +952,7 @@ function applyFileSelection(rel) {
 async function selectFile(rel, opts) {
     const scroll = opts && opts.scroll;
     FILE = rel;
-    applyFileSelection(rel);
+    preserveFocus(() => applyFileSelection(rel));
     if (scroll) {
         const cur = $('#tree .f[aria-current="true"]');
         if (cur) cur.scrollIntoView({ block: "nearest" });
@@ -903,7 +966,7 @@ function clearFileSelection() {
     applyFileSelection(null);
     const v = $("#viewer");
     if (v) {
-        v.innerHTML = VIEWER_EMPTY;
+        replaceContent(v, VIEWER_EMPTY);
         v.scrollTop = 0;
         wireBackTree();
     }
@@ -1201,18 +1264,18 @@ async function renderTeams() {
     const host = $("#p-teams");
 
     if (!t) {
-        host.innerHTML =
+        replaceContent(host,
             '<div class="scroll"><div class="empty big"><strong>No Teams index in this room</strong>' +
             "<p>Teams conversations are tracked in a chat index, expected at " +
             "<code>02_inventory/chat-index.md</code>. This room has no such file, so there is nothing to report.</p>" +
             "<p>A chat index records one row per <em>conversation</em> (a 1:1, group chat or meeting), " +
-            "which is different from the source inventory, which records one row per <em>file</em>.</p></div></div>";
+            "which is different from the source inventory, which records one row per <em>file</em>.</p></div></div>");
         return;
     }
     if (t.error) {
-        host.innerHTML =
+        replaceContent(host,
             '<div class="scroll"><div class="err"><h3>Could not read the chat index</h3><div>' +
-            h(t.error) + "</div></div></div>";
+            h(t.error) + "</div></div></div>");
         return;
     }
 
@@ -1227,7 +1290,7 @@ async function renderTeams() {
         ["Missing artifacts", t.counts.missingArtifacts, t.counts.missingArtifacts ? "warn" : "good"],
     ];
 
-    host.innerHTML =
+    replaceContent(host,
         '<div class="scroll">' +
         '<div class="teamshead">' +
         "<div><h2>Teams coverage</h2>" +
@@ -1286,7 +1349,7 @@ async function renderTeams() {
                   .join("") +
               "</div></section>"
             : "") +
-        "</div>";
+        "</div>");
 
     $("#sweepbtn").onclick = async () => {
         const r = await api("/api/teams/sweep");
@@ -1422,7 +1485,7 @@ async function renderFiles() {
         groups.get(top).push(f);
     }
     const kb = (n) => (n < 1024 ? n + " B" : (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB");
-    $("#p-files").innerHTML = `<div class="filewrap${FILE ? " showdetail" : ""}">
+    replaceContent($("#p-files"), `<div class="filewrap${FILE ? " showdetail" : ""}">
     <div class="tree" id="tree" role="listbox" aria-label="Room files" tabindex="-1">
       ${[...groups.entries()]
           .sort((a, b) => a[0].localeCompare(b[0]))
@@ -1442,7 +1505,7 @@ async function renderFiles() {
           .join("")}
     </div>
     <div class="viewer" id="viewer">${VIEWER_EMPTY}</div>
-  </div>`;
+  </div>`);
     wireBackTree();
     const tree = $("#tree");
     tree.querySelectorAll(".f").forEach((b) => {
@@ -1470,7 +1533,7 @@ async function showFile(rel) {
     const v = $("#viewer");
     if (!v) return;
     const current = () => generation === fileLoadGeneration && FILE === rel && v === $("#viewer");
-    v.innerHTML = VIEWER_BACK + '<div class="skeleton"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div><div class="sk w40"></div></div>';
+    replaceContent(v, VIEWER_BACK + '<div class="skeleton"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div><div class="sk w40"></div></div>');
     wireBackTree();
     try {
         const r = await api("/api/file?rel=" + encodeURIComponent(rel));
@@ -1491,17 +1554,17 @@ async function showFile(rel) {
         } else if (/\.md$/i.test(rel)) body = '<div class="md">' + md(f.text) + "</div>";
         else if (/\.csv$/i.test(rel)) body = '<div class="md">' + csvTable(f.text) + "</div>";
         else body = "<pre>" + h(f.text) + "</pre>";
-        v.innerHTML =
+        replaceContent(v,
             VIEWER_BACK +
             `<div class="vhead"><span class="p">${h(rel)}</span>${
                 j.file.truncated ? '<span class="badge b-amber">truncated</span>' : ""
-            }</div>` + body;
+            }</div>` + body);
         // Must not re-render the tree: that would reset its scroll position.
         wireBackTree();
         v.scrollTop = 0;
     } catch (e) {
         if (!current()) return;
-        v.innerHTML = VIEWER_BACK + '<div class="err"><h3>Could not open file</h3><div>' + h(e.message) + "</div></div>";
+        replaceContent(v, VIEWER_BACK + '<div class="err"><h3>Could not open file</h3><div>' + h(e.message) + "</div></div>");
         wireBackTree();
     }
 }
@@ -1574,9 +1637,10 @@ function debounce(fn, ms) {
 
 /* ---------------- picker ---------------- */
 let BROWSE = null;
+let pickerLoadGeneration = 0;
 
 async function openRoom(p) {
-    $("#app").innerHTML = '<div class="skeleton"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div></div>';
+    replaceContent($("#app"), '<div class="skeleton" id="roomloading" tabindex="-1" role="status" aria-label="Opening room"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div></div>');
     try {
         await load(p);
         render();
@@ -1587,6 +1651,9 @@ async function openRoom(p) {
 }
 
 async function renderPicker(errMsg, lastTried) {
+    const generation = ++pickerLoadGeneration;
+    const app = $("#app");
+    const previous = app.firstElementChild;
     let data = { roots: [], rooms: [], browse: null };
     try {
         const dir = BROWSE ? "?dir=" + encodeURIComponent(BROWSE) : "";
@@ -1596,6 +1663,7 @@ async function renderPicker(errMsg, lastTried) {
     } catch (e) {
         errMsg = errMsg || String(e.message || e);
     }
+    if (generation !== pickerLoadGeneration || app.firstElementChild !== previous) return;
     const b = data.browse;
 
     const crumbs = b
@@ -1604,7 +1672,7 @@ async function renderPicker(errMsg, lastTried) {
               .join('<span aria-hidden="true">/</span>')
         : "";
 
-    $("#app").innerHTML = `<div class="picker">
+    replaceContent($("#app"), `<div class="picker">
     <h2 class="head">Open a project room</h2>
     <p class="headsub">A project room is a folder containing a <code>room.yaml</code> manifest.</p>
 
@@ -1655,7 +1723,7 @@ async function renderPicker(errMsg, lastTried) {
         }
       </div>
     </section>
-  </div>`;
+  </div>`);
 
     $("#pasteform").onsubmit = (ev) => {
         ev.preventDefault();
@@ -1677,8 +1745,6 @@ async function renderPicker(errMsg, lastTried) {
             await renderPicker("");
         };
     });
-    const inp = $("#pathin");
-    if (inp && !lastTried) inp.focus();
 }
 
 /* ---------------- boot ---------------- */
