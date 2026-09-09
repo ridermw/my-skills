@@ -87,11 +87,13 @@ such repos in the report and stop.
    from the difference. Never report success on exit code alone: `merge --ff-only`
    and `fetch <b>:<b>` both exit 0 when nothing moved, so an exit-code-only check
    cannot tell `advanced` from `up-to-date`.
-   Immediately before any branch update, re-read the checkout branch, HEAD,
-   and working tree. Require the original branch/HEAD and a clean tree;
-   otherwise report `checkout changed (skipped)` without retrying that repo.
+   After remote reads, require the checkout branch, HEAD, and porcelain state
+   to match the captured values before reporting checkout-dependent results.
+   Recheck that same condition immediately before any branch update; only
+   initially clean checkouts reach an update. A mismatch is
+   `checkout changed (skipped)` without retrying that repo.
    - **Dirty** working tree → do not pull. Record `dirty (skipped), N behind`,
-     counting with `git rev-list --count HEAD..<verified-commit>` for its
+     counting with `git rev-list --count <captured-HEAD>..<verified-commit>` for its
      upstream, or the default branch when no upstream is configured. Report a
      verification/counting failure as an error rather than inventing a count.
    - `scope=current-branch`: if the current branch has no upstream, record
@@ -150,6 +152,19 @@ error() {
   r "$name" "$target" "error: $1"
   [ -z "$2" ] || printf '%s: %s\n' "$name" "$2" >&2
 }
+checkout_unchanged() {
+  local branch head state
+  if branch="$(git -C "$repo" branch --show-current)"; then :;
+  else error "cannot revalidate checkout branch" ""; return 1; fi
+  if head="$(git -C "$repo" rev-parse --verify HEAD)"; then :;
+  else error "cannot revalidate checkout HEAD" ""; return 1; fi
+  if state="$(git -C "$repo" status --porcelain)"; then :;
+  else error "cannot revalidate working tree" ""; return 1; fi
+  if [ "$branch" != "$cur" ] || [ "$head" != "$initial_head" ] || [ "$state" != "$dirty" ]; then
+    r "$name" "$target" "checkout changed (skipped)"; return 1
+  fi
+  return 0
+}
 find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print | while IFS= read -r g; do
   repo="$(dirname "$g")"; name="$(basename "$repo")"
   cur="$(git -C "$repo" branch --show-current 2>/dev/null)"
@@ -202,14 +217,16 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
     [ "$desired" = "$expected" ] ||
       { error "stale tracking ref ($ref); check fetch filters or retry" ""; continue; }
   fi
+  checkout_unchanged || continue
   if [ -n "$dirty" ]; then
-    if behind="$(git -C "$repo" rev-list --count "HEAD..$desired")"; then
+    if behind="$(git -C "$repo" rev-list --count "$initial_head..$desired")"; then
       r "$name" "$cur" "dirty (skipped), $behind behind"
     else error "cannot count commits behind" ""; fi
     continue
   fi
   suffix=""; [ "$target" = "$cur" ] || suffix=" (on $cur)"
-  before="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$target")"
+  if [ "$target" = "$cur" ]; then before="$initial_head"
+  else before="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$target")"; fi
   if [ -n "$before" ]; then
     if git -C "$repo" merge-base --is-ancestor "$desired" "$before"; then
       r "$name" "$target" "up-to-date$suffix"; continue
@@ -224,16 +241,7 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
       continue
     fi
   fi
-  if current_branch="$(git -C "$repo" branch --show-current)"; then :;
-  else error "cannot revalidate checkout branch" ""; continue; fi
-  if current_head="$(git -C "$repo" rev-parse --verify HEAD)"; then :;
-  else error "cannot revalidate checkout HEAD" ""; continue; fi
-  if current_dirty="$(git -C "$repo" status --porcelain)"; then :;
-  else error "cannot revalidate working tree" ""; continue; fi
-  if [ "$current_branch" != "$cur" ] || [ "$current_head" != "$initial_head" ] ||
-     [ -n "$current_dirty" ]; then
-    r "$name" "$target" "checkout changed (skipped)"; continue
-  fi
+  checkout_unchanged || continue
   if [ "$target" = "$cur" ]; then
     if err="$(git -C "$repo" merge --ff-only "$desired" --quiet 2>&1)"; then :;
     else error "merge failed" "$err"; continue; fi

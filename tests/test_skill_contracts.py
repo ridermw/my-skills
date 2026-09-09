@@ -291,6 +291,42 @@ git() {
         self.assertEqual(self.git(self.repo, "status", "--porcelain"), "")
         self.assertEqual(result, "checkout changed (skipped)")
 
+    def test_dirty_branch_switch_does_not_report_another_heads_count(self):
+        tip = self.advance()
+        self.git(self.repo, "fetch", "--quiet", "origin")
+        self.git(self.repo, "branch", "feature", tip)
+        (self.repo / "local.txt").write_text("unsaved user work\n")
+        self.change_after_remote_read('command git -C "$2" switch --quiet feature')
+        result = self.sync()
+        self.assertEqual(self.git(self.repo, "branch", "--show-current"), "feature")
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), tip)
+        self.assertEqual(self.git(self.repo, "rev-parse", "main"), self.original)
+        self.assertEqual((self.repo / "local.txt").read_text(), "unsaved user work\n")
+        self.assertEqual(result, "checkout changed (skipped)")
+
+    def test_dirty_head_movement_is_detected_before_counting(self):
+        tip = self.advance()
+        (self.repo / "local.txt").write_text("unsaved user work\n")
+        self.change_after_remote_read(
+            f'command git -C "$2" merge --ff-only --quiet "{tip}"'
+        )
+        result = self.sync()
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), tip)
+        self.assertEqual((self.repo / "local.txt").read_text(), "unsaved user work\n")
+        self.assertEqual(result, "checkout changed (skipped)")
+
+    def test_dirty_status_change_is_detected_before_counting(self):
+        self.advance()
+        (self.repo / "local.txt").write_text("unsaved user work\n")
+        self.change_after_remote_read(
+            'printf "%s\\n" "new user work" > "$2/new-local.txt"'
+        )
+        result = self.sync()
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), self.original)
+        self.assertEqual((self.repo / "local.txt").read_text(), "unsaved user work\n")
+        self.assertEqual((self.repo / "new-local.txt").read_text(), "new user work\n")
+        self.assertEqual(result, "checkout changed (skipped)")
+
     def test_index_lock_is_an_error_not_divergence(self):
         self.advance()
         (self.repo / ".git/index.lock").write_text("another process\n")

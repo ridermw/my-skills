@@ -27,9 +27,10 @@ All notable changes to the skills in this repo.
   reported dirty skip or contaminate commit IDs and counts. Preserve fetch
   filters and verify selected tracking commits against current remote tips
   before updates or dirty behind-counts. Missing/stale refs fail closed;
-  subsequent operations use the verified commit ID. Revalidate the checkout
-  branch, HEAD, and dirty state immediately before updates; observed local
-  changes produce `checkout changed (skipped)` (review of #8).
+  subsequent operations use the verified commit ID. A shared checkout-state
+  condition guards results and updates; dirty counts use the captured HEAD.
+  Observed branch, HEAD, or porcelain-state changes produce
+  `checkout changed (skipped)` (review of #8).
 - **`project-room`** — shortened its description to fit portable loader limits.
   The base resolver rejects relative pointers and preserves a valid absolute
   bootstrap target even when absent. Existing summaries and `prep_summary.json`

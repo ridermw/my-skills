@@ -56,7 +56,8 @@ Operational workflows still need the corresponding environment capabilities:
   Its reference loop uses Bash/POSIX utilities; native Windows hosts need Git
   Bash/WSL or a faithful PowerShell translation. Fetch filters are preserved;
   stale or unverifiable selected refs produce errors, not guessed sync results.
-  The checkout is revalidated before updates; observed local changes are skipped.
+  One captured checkout state governs reports and updates; changed state is
+  skipped, and behind-counts use the captured HEAD rather than a moving ref.
 - `ado-pr-build-monitor` — needs Azure DevOps access, via either the
   [Azure DevOps MCP server](https://github.com/microsoft/azure-devops-mcp) or the
   Azure CLI with the `azure-devops` extension. Logs require authenticated GET
