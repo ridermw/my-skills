@@ -390,7 +390,10 @@ test("every client prompt keeps dynamic context inside one intact data boundary"
             ...DATA,
             name: marker("ROOM_CONTEXT"),
             root: marker("ROOT_CONTEXT"),
-            teams: { rel: marker("INDEX_CONTEXT"), counts: { unregistered: 1 } },
+            teams: {
+                rel: marker("INDEX_CONTEXT"), counts: { unregistered: 1 },
+                unattributedCaptures: [{ id: marker("SOURCE_CONTEXT"), path: marker("PATH_CONTEXT") }],
+            },
         };
         const c = {
             name: marker("CONVERSATION_CONTEXT"),
@@ -422,7 +425,7 @@ test("every client prompt keeps dynamic context inside one intact data boundary"
         assert.ok(start >= 0 && end > start, name);
         assert.equal(lines.filter((line) => line === "--- END ROOM DATA ---").length, 1, name);
         const trusted = [...lines.slice(0, start), ...lines.slice(end + 1)].join("\n");
-        assert.doesNotMatch(trusted, /(?:ROOM|ROOT|INDEX|CONVERSATION|CHAT)_CONTEXT/, name);
+        assert.doesNotMatch(trusted, /(?:ROOM|ROOT|INDEX|CONVERSATION|CHAT|SOURCE|PATH)_CONTEXT/, name);
         assert.match(prompt, /ROOM_CONTEXT/, name);
         assert.match(prompt, /ROOT_CONTEXT/, name);
     }
@@ -588,4 +591,50 @@ test("Markdown preview retains escaped pipes within their original columns", asy
     await page.locator('[data-rel="00_originals/pipe-table.md"]').click();
     await page.locator("#viewer table").waitFor();
     assert.deepEqual(await page.locator("#viewer td").allTextContents(), ["pages 1 | 2", "no"]);
+});
+
+test("unattributed captures stay visible and generate reconciliation rather than recapture", async (t) => {
+    const root = await makeRoom(t, 2);
+    const today = new Date().toISOString().slice(0, 10);
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+        "Source ID,Path,Source type,Date,Authority,Current or superseded",
+        `S001,00_originals/source-1.txt,Transcript,${today},Primary,current`,
+        `S002,00_originals/source-2.txt,Transcript,${today},Primary,current`,
+        "",
+    ].join("\n"));
+    await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+        "# Chat index", "## 1. Alpha", "**chat_id:** `19:alpha@thread.v2`",
+        "| Source | Captured | Complete |", "| --- | --- | --- |", `| S001 | ${today} | yes |`, "",
+    ].join("\n"));
+    const { page } = await openPage(t, root);
+    await page.locator("#tab-teams").click();
+    await page.locator("#unattributed-captures").waitFor();
+    assert.match(await page.locator("#unattributed-captures").textContent(), /S002/);
+    assert.equal(await page.locator('.conv [data-act="recapture"]').count(), 0);
+    await page.locator("#reconcile-unattributed").click();
+    let prompt = await page.locator("#promptout").textContent();
+    assert.match(prompt, /Index operation/);
+    assert.match(prompt, /unattributed conversation captures: 1/);
+    const start = prompt.indexOf("--- BEGIN ROOM DATA");
+    const end = prompt.indexOf("--- END ROOM DATA ---");
+    assert.ok(prompt.indexOf("S002") > start && prompt.indexOf("S002") < end);
+    await page.locator("#sweepbtn").click();
+    await page.waitForFunction(() => document.querySelector("#promptout")?.textContent.includes("No conversation currently"));
+    prompt = await page.locator("#promptout").textContent();
+    assert.match(prompt, /S002/);
+    assert.doesNotMatch(prompt, /Re-capture only the listed targets/);
+    await page.locator('#unattributed-captures [data-src="S002"]').click();
+    assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), ["S002"]);
+});
+
+test("duplicate conversation indexes show an error instead of misdirected actions", async (t) => {
+    const root = await makeRoom(t, 2);
+    await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+        "# Chat index", "## 1. Alpha", "**chat_id:** `19:alpha@thread.v2`",
+        "## 1. Beta", "**chat_id:** `19:beta@thread.v2`", "",
+    ].join("\n"));
+    const { page } = await openPage(t, root);
+    await page.locator("#tab-teams").click();
+    assert.match(await page.locator("#p-teams").textContent(), /Could not read the chat index/);
+    assert.equal(await page.locator("[data-act]").count(), 0);
 });

@@ -131,6 +131,15 @@ function parseOccurrenceRow(header, row) {
     return out;
 }
 
+function conversationIndex(value, allowEmpty = false) {
+    if (allowEmpty && value === "") return null;
+    const index = Number(value);
+    if (!/^\d+$/.test(value) || !Number.isSafeInteger(index) || index < 1) {
+        throw new Error("Invalid chat index: conversation ordinal must be a positive safe integer: " + value);
+    }
+    return index;
+}
+
 /**
  * Parse a room's chat index into conversations plus known gaps.
  * Returns null when the text does not look like a chat index at all.
@@ -152,6 +161,7 @@ export function parseChatIndex(text) {
     sections.push(cur);
 
     const conversations = [];
+    const detailIndexes = new Set();
     let knownGaps = [];
     let quickMap = [];
     const identityConflicts = [];
@@ -180,7 +190,7 @@ export function parseChatIndex(text) {
                         return i > -1 ? r[i] : "";
                     };
                     return {
-                        ordinal: Number(stripMd(get("#"))) || null,
+                        ordinal: conversationIndex(stripMd(get("#")), true),
                         chatIdShort: stripMd(get("chat_id")),
                         name: stripMd(get("conversation")),
                         type: stripMd(get("type")),
@@ -193,6 +203,9 @@ export function parseChatIndex(text) {
             continue;
         }
         if (!numbered) continue;
+        const index = conversationIndex(numbered[1]);
+        if (detailIndexes.has(index)) throw new Error("Invalid chat index: duplicate detail index " + index);
+        detailIndexes.add(index);
 
         // a numbered section is one conversation
         const body = sec.lines.join("\n");
@@ -202,7 +215,7 @@ export function parseChatIndex(text) {
         const dash = title.split(/\s+[—–]\s+/);
 
         const conv = {
-            index: Number(numbered[1]),
+            index,
             name: stripMd(dash[0]),
             kindLabel: dash[1] ? stripMd(dash[1]) : "",
             chatId: idm ? idm[1] : null,
@@ -280,7 +293,7 @@ export function parseChatIndex(text) {
         } else {
             conversations.push({
                 index: q.ordinal != null && !byOrdinal ? q.ordinal :
-                    conversations.reduce((max, c) => Math.max(max, c.index), 0) + 1,
+                    conversationIndex(String(conversations.reduce((max, c) => Math.max(max, c.index), 0) + 1)),
                 name: q.name,
                 chatId: q.chatIdShort && !q.chatIdShort.includes("\u2026") ? q.chatIdShort : null,
                 chatIdShort: q.chatIdShort || null,
@@ -334,16 +347,18 @@ function sameChat(full, short) {
  *  ("Matthew \u2194 Yaniv Biran 1:1" vs "Matthew Williams \u2194 Yaniv Biran"), so
  *  treat them as the same thread when one token set is contained in the other. */
 function namesMatch(a, b) {
+    const normalizedA = looseName(a);
+    const normalizedB = looseName(b);
+    if (normalizedA === normalizedB && /\p{L}/u.test(normalizedA)) return true;
     const toks = (s) =>
         new Set(
-            looseName(s)
+            s
                 .split(" ")
-                .filter((w) => w.length > 2 && !/^\d+$/.test(w))
+                .filter((w) => w.length > 2 && !/^\p{N}+$/u.test(w))
         );
-    const A = toks(a);
-    const B = toks(b);
+    const A = toks(normalizedA);
+    const B = toks(normalizedB);
     if (!A.size || !B.size) return false;
-    if (A.size === 1 && B.size === 1 && looseName(a) === looseName(b)) return true;
     const small = A.size <= B.size ? A : B;
     const big = A.size <= B.size ? B : A;
     let hit = 0;
@@ -353,8 +368,9 @@ function namesMatch(a, b) {
 
 const looseName = (s) =>
     String(s || "")
+        .normalize("NFC")
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
         .trim();
 
 function inferType(c) {
@@ -459,6 +475,7 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         knownGaps: index.knownGaps,
         identityConflicts: index.identityConflicts || [],
         attributionConflicts: index.attributionConflicts || [],
+        unattributedCaptures: index.unattributedCaptures || [],
     });
 }
 
@@ -504,6 +521,7 @@ export function refreshTeamsHealth(health) {
         unknownCaptureDate: count("unknownCaptureDate"),
         identityConflicts: (health.identityConflicts || []).length,
         attributionConflicts: (health.attributionConflicts || []).length,
+        unattributedCaptures: (health.unattributedCaptures || []).length,
         needsRecapture: count("needsRecapture"),
         needsReconciliation: count("needsReconciliation"),
         hasProblem: count("hasProblem"),
@@ -566,6 +584,12 @@ export function sweepPlan(health, { roomName = "this room" } = {}) {
             gap: untrustedValue(g.gap, 300),
             detail: untrustedValue(g.detail, 400),
         })),
+        unattributedCaptures: bounded(health.unattributedCaptures, (source) => ({
+            id: untrustedValue(source.id, 160),
+            date: untrustedValue(source.date, 160),
+            path: untrustedValue(source.path, 400),
+            type: untrustedValue(source.type, 300),
+        })),
     };
     const lines = [
         "Refresh the Teams sources for the room described in the untrusted data below.",
@@ -586,6 +610,7 @@ export function sweepPlan(health, { roomName = "this room" } = {}) {
         lines.push("- Record the resulting complete: flag from the LAST page, not the first.");
         lines.push("- Write new captures to the inbox, then update the inventory and the chat index.");
     }
+    lines.push("Reconcile unattributed captures with the index; they are not re-capture targets.");
     lines.push("All targets are listed. Supporting collections report total and omitted counts; truncated strings are marked.");
     lines.push("Reconcile omitted or truncated supporting data in the room before relying on it or declaring coverage complete.");
     lines.push("");

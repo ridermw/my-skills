@@ -1033,6 +1033,8 @@ function convLines(c) {
 function buildIndexPrompt(d) {
     const pending = d.health.inboxPending || [];
     const shown = pending.slice(0, 40);
+    const unattributed = d.teams?.unattributedCaptures || [];
+    const unattributedShown = unattributed.slice(0, 40);
     return [
         "Run the project-room skill's Index operation (index.md) on this room.",
         "",
@@ -1044,6 +1046,11 @@ function buildIndexPrompt(d) {
         "files awaiting triage in 01_inbox: " + pending.length,
         "paths shown: " + shown.length + "; omitted: " + (pending.length - shown.length),
         ...shown.map((p) => "  " + qPath(p)),
+        ...(unattributed.length ? [
+            "unattributed conversation captures: " + unattributed.length,
+            "unattributed paths shown: " + unattributedShown.length + "; omitted: " + (unattributed.length - unattributedShown.length),
+            ...unattributedShown.map((source) => "  " + q(source.id) + " path: " + qPath(source.path)),
+        ] : []),
         UNTRUSTED_END,
         "",
         "Follow index.md exactly. Do not draft anything, and STOP at the review gate.",
@@ -1204,6 +1211,7 @@ async function renderTeams() {
 
     const cs = t.conversations;
     const gaps = t.knownGaps || [];
+    const unattributed = t.unattributedCaptures || [];
     const kpi = [
         ["Conversations", cs.length, ""],
         ["Captures", t.counts.captures, ""],
@@ -1241,6 +1249,21 @@ async function renderTeams() {
               t.attributionConflicts.length + " unregistered source(s) match multiple conversations. " +
               "Reconcile their identity; these matches do not verify capture age.</p></div>"
             : "") +
+        (unattributed.length
+            ? '<section class="sec" id="unattributed-captures"><h3>Unattributed captures <span class="cnt">' +
+              unattributed.length + "</span></h3>" +
+              '<p class="sub">These inventory artifacts could not be matched to an indexed conversation. ' +
+              "Reconcile their identity before changing coverage; they are not automatic re-capture targets.</p>" +
+              '<div class="gaps">' +
+              unattributed.slice(0, 20).map((source) =>
+                  '<div class="gap"><div class="gk"><button type="button" class="chip src" data-src="' +
+                  h(source.id) + '">' + h(source.id) + '</button></div><div class="gd">' +
+                  h(source.path || "path unavailable") + "</div></div>"
+              ).join("") +
+              '</div><p class="sub">Showing ' + Math.min(20, unattributed.length) + " of " + unattributed.length +
+              "; omitted from this view: " + Math.max(0, unattributed.length - 20) + ".</p>" +
+              '<button type="button" class="btn" id="reconcile-unattributed">Reconcile unattributed captures\u2026</button></section>'
+            : "") +
         '<section class="sec"><h3>Conversations</h3><div class="convs">' +
         cs.map((c) => convCard(c)).join("") +
         "</div></section>" +
@@ -1270,6 +1293,9 @@ async function renderTeams() {
             j.text
         );
     };
+    const reconcileUnattributed = $("#reconcile-unattributed");
+    if (reconcileUnattributed)
+        reconcileUnattributed.onclick = () => showPrompt("Reconcile unattributed captures", buildIndexPrompt(d));
 
     host.querySelectorAll("[data-act]").forEach((b) => {
         b.onclick = () => {

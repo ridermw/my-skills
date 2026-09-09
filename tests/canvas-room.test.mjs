@@ -630,13 +630,15 @@ test("preview reads a bounded prefix of a real sparse multi-GiB file under a con
     const size = 3 * 1024 * 1024 * 1024 + 1;
     const handle = await open(path.join(root, "large.txt"), "w");
     try {
-        await handle.write("Sparse fixture\n");
+        const prefix = Buffer.alloc(TEXT_LIMIT + 4, 0x61);
+        prefix.write("Sparse fixture\n");
+        await handle.write(prefix);
         await handle.truncate(size);
     } finally {
         await handle.close();
     }
     const info = await stat(path.join(root, "large.txt"));
-    assert.ok(info.blocks * 512 < TEXT_LIMIT, "Fixture must remain sparse, not allocate GiB on disk");
+    assert.ok(info.blocks * 512 < TEXT_LIMIT * 2, "Fixture must remain sparse, not allocate GiB on disk");
     const { stdout } = await exec(process.execPath, [
         "--max-old-space-size=48", "--input-type=module", "-e", `
             import assert from "node:assert/strict";
@@ -874,6 +876,7 @@ for (const { lifecycle, authority, disputed } of [
     { lifecycle: "Historical (abandoned approach)", authority: "supporting", disputed: false },
     { lifecycle: "likely superseded", authority: "authoritative", disputed: false },
     { lifecycle: "unknown", authority: "authoritative", disputed: false },
+    { lifecycle: "Unavailable", authority: "authoritative", disputed: false },
     { lifecycle: "current", authority: "superseded", disputed: false },
     { lifecycle: "current", authority: "authoritative", disputed: true },
     { lifecycle: "current", authority: "unknown", disputed: true },
@@ -1008,3 +1011,82 @@ test("native home fallback supplies absolute starting points with HOME missing",
         if (homeExists) assert.equal(result.roots.find((entry) => entry.path === home).name, "~");
     `);
 });
+
+for (const second of ["1", "01"]) {
+    test(`ordinal validation surfaces duplicate detail index ${second} as a room Teams error`, async (t) => {
+        const { root } = await fixture(t);
+        await put(root, "02_inventory/chat-index.md", "# Chat index\n\n"
+            + "## 1. Alpha\n**chat_id:** `19:alpha`\n\n"
+            + `## ${second}. Beta\n**chat_id:** \`19:beta\`\n`);
+        const room = await readRoom(root);
+        assert.equal(typeof room.teams.error, "string");
+        assert.match(room.teams.error, /duplicate.*(?:index|ordinal)/i);
+        assert.equal(room.teams.conversations, undefined);
+        assert.equal(room.teams.counts, undefined);
+    });
+}
+
+test("unattributed capture inventory rows remain separate from assigned sources and attribution conflicts", async (t) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const sources = [
+        { id: "S900", path: "00_originals/gamma-transcript.md", date: today, type: "transcript" },
+        { id: "S901", path: "00_originals/alpha-beta-transcript.md", date: today, type: "transcript" },
+        { id: "S902", path: "00_originals/alpha-transcript.md", date: "2020-01-01", type: "transcript" },
+    ];
+    const { root } = await indexedConversations(t, { names: ["Alpha chat", "Beta chat"], sources });
+    const { teams } = await readRoom(root);
+    assert.deepEqual(teams.unattributedCaptures, [sources[0]]);
+    assert.equal(teams.counts.unattributedCaptures, 1);
+    assert.equal(teams.counts.attributionConflicts, 1);
+    assert.equal(teams.counts.unregistered, 1);
+    assert.deepEqual(teams.conversations[0].unregistered, [sources[2]]);
+    assert.deepEqual(teams.conversations[1].unregistered, []);
+    assert.ok(teams.conversations.every((c) => c.isStale && !c.staleDateDisputed));
+    const plan = sweepPlan(teams);
+    assert.deepEqual(plan.targets.map((c) => c.index), [1, 2]);
+    const data = JSON.parse(plan.text.match(/<untrusted_data>\n([\s\S]*?)\n<\/untrusted_data>/)[1]);
+    assert.deepEqual(data.unattributedCaptures.items, [sources[0]]);
+    assert.equal(data.unattributedCaptures.total, 1);
+});
+
+test("unattributed capture reconciliation survives a no-target sweep without changing conversation health", async (t) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const source = { id: "S900", path: "00_originals/gamma-transcript.md", date: today, type: "transcript" };
+    const { root, index } = await indexedConversations(t, { sources: [source] });
+    await put(root, "02_inventory/chat-index.md", index.replaceAll("2020-02-01", today));
+    const { teams } = await readRoom(root);
+    assert.deepEqual(teams.unattributedCaptures, [source]);
+    assert.equal(teams.counts.unattributedCaptures, 1);
+    assert.equal(teams.counts.attributionConflicts, 0);
+    assert.deepEqual(teams.conversations[0].unregistered, []);
+    assert.equal(teams.conversations[0].hasProblem, false);
+    assert.equal(teams.conversations[0].staleDateDisputed, false);
+    const plan = sweepPlan(teams);
+    assert.deepEqual(plan.targets, []);
+    const data = JSON.parse(plan.text.match(/<untrusted_data>\n([\s\S]*?)\n<\/untrusted_data>/)[1]);
+    assert.deepEqual(data.unattributedCaptures.items, [source]);
+});
+
+for (const ext of [".txt", ".md", ".csv"]) {
+    test(`binary text extension ${ext} cannot bypass byte classification or break UTF-16 text`, async (t) => {
+        const { root } = await fixture(t);
+        const bytes = Buffer.from([0x41, 0, 0xff, 0x42]);
+        await put(root, "binary" + ext, bytes);
+        const result = await readRoomFile(root, "binary" + ext);
+        assert.equal(result.kind, "binary");
+        assert.equal(result.text, undefined);
+        assert.equal(result.truncated, false);
+        assert.equal(result.size, bytes.length);
+        await put(root, "plain" + ext, "Plain caf\u00e9\n");
+        assert.equal((await readRoomFile(root, "plain" + ext)).text, "Plain caf\u00e9\n");
+        for (const encoding of ["utf16le", "utf16be"]) {
+            let text = Buffer.from("\uFEFFValid \u{1f642}", "utf16le");
+            if (encoding === "utf16be") text = text.swap16();
+            await put(root, encoding + ext, text);
+            const decoded = await readRoomFile(root, encoding + ext);
+            assert.equal(decoded.kind, "text");
+            assert.equal(decoded.encoding, encoding);
+            assert.equal(decoded.text, "Valid \u{1f642}");
+        }
+    });
+}

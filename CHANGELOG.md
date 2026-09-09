@@ -99,6 +99,11 @@ All notable changes to the skills in this repo.
   lifecycle and layout problems. Share escaped-pipe table parsing between the
   coverage reader and Markdown preview, and give biweekly cadence precedence
   over the generic weekly match.
+- **`project-room-browser` identity and unattributed evidence (#7)** — reject
+  duplicate conversation indexes before exposing actions, retain Unicode names
+  in quick-map matching, and keep zero-match conversation artifacts visible for
+  room-level reconciliation. Unavailable sources cannot certify freshness, and
+  binary content is detected even when its filename has a text extension.
 
 ### Added
 - **Repository-only regression coverage** — real local Git and room fixtures

@@ -457,7 +457,7 @@ export async function readRoom(roomPath) {
     // record a runbook kept as "Historical (abandoned approach)" that still
     // contains app settings which are fatal if run, so lifecycle is a safety
     // signal here, not just bookkeeping.
-    const NOT_CURRENT = /superseded|historical|abandoned|\bunknown\b/i;
+    const NOT_CURRENT = /superseded|historical|abandoned|\b(?:unknown|unavailable)\b/i;
     const isNotCurrent = (s) =>
         NOT_CURRENT.test(s.Lifecycle || "") || /^superseded$/i.test((s.Authority || "").trim());
     const notCurrent = sources
@@ -510,6 +510,7 @@ export async function readRoom(roomPath) {
         }));
         const byConversation = new Map();
         const attributionConflicts = [];
+        const unattributedCaptures = [];
         const recencySources = new Set();
         for (const s of sources) {
             const id = String(s["Source ID"] || "");
@@ -531,9 +532,11 @@ export async function readRoom(roomPath) {
                     source,
                     candidates: candidates.map((c) => ({ index: c.index, name: c.name, chatId: c.chatId })),
                 });
+            } else {
+                unattributedCaptures.push(source);
             }
         }
-        return { byConversation, attributionConflicts, recencySources };
+        return { byConversation, attributionConflicts, unattributedCaptures, recencySources };
     }
 
     try {
@@ -543,6 +546,7 @@ export async function readRoom(roomPath) {
             teams = { rel: chatRel, ...teamsHealth(idx, { now }) };
             const extra = unregisteredCaptures(teams.conversations);
             teams.attributionConflicts = extra.attributionConflicts;
+            teams.unattributedCaptures = extra.unattributedCaptures;
             for (const c of teams.conversations) {
                 c.unregistered = extra.byConversation.get(c.index) || [];
                 c.attributionConflicts = extra.attributionConflicts.filter(
@@ -647,11 +651,6 @@ async function assertInsideReal(roomPath, target) {
 }
 
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".bmp", ".ico"]);
-const TEXT_EXT = new Set([
-    ".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".html", ".htm",
-    ".js", ".mjs", ".ts", ".py", ".sh", ".bash", ".zsh", ".sql", ".kql", ".ini", ".cfg", ".toml",
-    ".log", ".vtt", ".srt", ".env", ".gitignore", ".ps1", ".rb", ".go", ".rs", ".java", ".cs",
-]);
 
 const MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
@@ -722,8 +721,8 @@ export async function readRoomFile(roomPath, rel) {
             return { ...meta, kind: "text", encoding: utf16, truncated, text: le.toString("utf16le").replace(/^\uFEFF/, "") };
         }
 
-        // Unknown extensions may still contain text; avoid decoding binary.
-        if (!TEXT_EXT.has(ext) && looksBinary(buf)) return { ...meta, kind: "binary", truncated: false };
+        // The UTF-16 BOM branch above takes precedence; extensions do not override binary bytes.
+        if (looksBinary(buf)) return { ...meta, kind: "binary", truncated: false };
 
         let end = Math.min(buf.length, MAX_TEXT);
         if (truncated) {

@@ -39,6 +39,9 @@ uniquely attributed current inventory capture can dispute the index's age.
 Source chips select the complete Source ID, not a substring match.
 Overview badges and cards use the same warning model. The coverage reader and
 Markdown preview share table-cell parsing so escaped pipes cannot shift columns.
+Artifacts without a conversation match remain visible in a separate unattributed
+collection, with an Index action for reconciliation rather than automatic
+re-capture. Duplicate conversation indexes are rejected before actions appear.
 
 ## Screenshot
 
