@@ -5,7 +5,10 @@
 ## Step 3 — Index (inventory + build the retrieval layer)
 
 Fold `01_inbox/` (and any un-indexed `00_originals/`) into the inventory **and**
-produce the summary tier.
+produce the summary tier. Before replacing existing summaries or
+`prep_summary.json`, take the maintenance snapshot in principle 4 unless the
+calling Refresh already did. Set `review_status: needs_review` in both the
+manifest and README before changing maintenance state.
 1. Determine the room's `id_prefix` (from `room.yaml`, else none) and the highest
    existing S-number.
 2. For each new source: assign the next `S###`, fill all columns, mark **Change =
@@ -16,7 +19,9 @@ produce the summary tier.
    source, write `03_source_summaries/<SourceID>-<slug>.md` (**150–300 words**)
    answering: (1) what is this source? (2) what does it contain that matters? (3)
    what claims/numbers/decisions does it support? (4) limitations? (5) how should
-   it be used in the deliverable? Cite the Source ID; flag uncertainty.
+   it be used in the deliverable? Cite the Source ID; flag uncertainty. For an
+   existing ID, update its canonical summary path after snapshotting, rather
+   than creating a suffixed summary that Seek could mistake for a second version.
 4. **Heavy inbox (many/large files)?** Run the scan in a subagent that returns
    draft rows + summaries, so the main session never loads the raw bytes.
 5. Move indexed items from `01_inbox/` into `00_originals/` only if the user wants

@@ -6,7 +6,10 @@
 
 Use when sources changed materially or before a new drafting pass.
 1. **Snapshot first** (principle 4), and confirm the room is fully synced with no
-   conflict-copy files before writing (see Safety & scope).
+   conflict-copy files before writing (see Safety & scope). Include current
+   summaries and `prep_summary.json`. After the snapshot succeeds, set
+   `review_status: needs_review` in both manifest and README before other writes,
+   so an interrupted refresh cannot leave changed evidence marked approved.
 2. **Identify changes** vs the existing inventory: new / updated / no-longer-
    present sources, and any whose authority/relevance changed. Do not assume the
    old analysis still holds.
@@ -20,7 +23,9 @@ Use when sources changed materially or before a new drafting pass.
    capture the inventory holds for it.
 5. Update `missing_context.md` in three buckets: **now resolved**, **still
    missing**, **newly identified**.
-6. Refresh changed summaries; reconcile the working brief, noting superseded
+6. Refresh summaries in place at their canonical paths (principle 10); the
+   pre-refresh snapshot preserves their old contents. A changed source gets a
+   new ID and summary instead. Reconcile the working brief, noting superseded
    guidance rather than deleting it.
 7. Write a dated `change_log.md` section and regenerate `prep_summary.json`.
 8. Bump `last_refreshed` and reset `review_status: needs_review` (principle 5 —

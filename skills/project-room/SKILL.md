@@ -1,6 +1,6 @@
 ---
 name: project-room
-description: 'Turn a messy pile of sources into an inspectable "project room" and produce a grounded, source-cited deliverable. Portable and self-contained: works with no prior setup — on first use it creates a project-rooms base folder (default ~/project-rooms, override with PROJECT_ROOMS_DIR) and your first room. Invoked with no room named, it lists existing rooms and asks which to use, with "create new project room" last. A room prepares an inspectable source inventory + duplicate/conflict/missing-context logs + summaries + working brief, STOPS for human review, THEN drafts a deliverable that cites Source IDs, labels inferences, and flags unsupported claims. It can also capture and index sources as you work. Triggers: "project room", "organize my sources", "build a source inventory", "which room is this", "index the room sources", "draft from the room", "refresh the project room", "archive superseded outputs", "new project room", "working brief". Preparation before drafting; stable IDs; never overwrites originals or invents facts. This file holds the principles, room anatomy and room resolution; each operation (index, draft, refresh, new-room, archive) lives in its own markdown file in this same folder and is loaded on demand.'
+description: 'Use when organizing source files into a project room, capturing or indexing evidence, building a source inventory or working brief, drafting a source-cited deliverable, refreshing a room, or archiving superseded outputs. Includes first-run setup, new project rooms, room selection, and questions about what a room knows. Not for implementing the project itself.'
 ---
 
 # Project Room (portable)
@@ -11,13 +11,13 @@ working brief — so the deliverable you eventually write is **grounded, not
 guessed**. Then draft that deliverable from the reviewed room with every claim
 traceable to a source.
 
-This file is **self-contained**: no prior rooms, no external config, and no
+This skill folder is **self-contained**: no prior rooms, no external config, and no
 specific connectors required (see Requirements below). On first use it sets up
 everything.
 
 > Method credit: adapts the "organize your files before you ask AI to write"
 > four-step approach (Build → Audit → Grounded Draft → Refresh). The method is
-> summarized inline below, so nothing outside this file is needed.
+> summarized in this folder; operation-specific guidance is loaded on demand.
 
 ## Install (for whoever adopts this skill)
 
@@ -75,9 +75,14 @@ Hold this intent above convenience:
 3. **Conflicts and duplicates are logged, not silently resolved** — they go in
    `99_review/conflict_log.md` / `duplicate_log.md` for human review. **Never
    blend or average numbers across different versions of the same source.**
-4. **Snapshot before a refresh:** copy current maintenance state into a fresh
-   `99_review/history/<YYYY-MM-DD>[-N]-pre-refresh/` (add `-2`/`-3` if one already
-   exists that day) before editing it.
+4. **Snapshot before a refresh or replacing generated maintenance files.**
+   Copy the existing manifest, README, inventory, logs, working brief, source
+   summaries, and `prep_summary.json` into a fresh
+   `99_review/history/<YYYY-MM-DD>[-N]-pre-refresh/` before editing them (add
+   `-2`/`-3` for collisions). Index also snapshots before replacing a summary or
+   `prep_summary.json`; reuse a snapshot already taken by the calling Refresh.
+   Only after the snapshot succeeds, mark the room `needs_review` in the
+   manifest and README before other maintenance writes. Never change a snapshot.
 5. **Bump `last_refreshed` and mirror `review_status` in BOTH `room.yaml` and
    `README.md`** on any state change — the README is the surface a reader
    orients from, so an invalidated room must not look approved there.
@@ -96,10 +101,14 @@ Hold this intent above convenience:
 9. **Encrypted/label-protected files** (some `.docx`/`.pptx`/PDF) may be
    unreadable by tools; note that and rely on provided summaries rather than
    failing the whole task.
-10. **Write create-only.** Never clobber an existing room, draft, snapshot,
-    capture, or summary; if a target exists, add a numeric/timestamp suffix. The
-    only files updated in place are the manifest, README, inventory, logs, and
-    working brief.
+10. **Write originals, drafts, snapshots, and captures create-only.** Never
+    clobber an existing room or these artifacts; suffix a colliding new target.
+    Maintenance files are updated in place: manifest, README, inventory, logs,
+    working brief, source summaries, and `99_review/prep_summary.json`.
+    After the snapshot in principle 4, regenerate a summary at its existing
+    canonical `<SourceID>-<slug>.md` path, not a suffixed parallel copy. Seek
+    reads that current file; historical versions live only in snapshots.
+    Changed source bytes still require a new Source ID and a new summary path.
 
 ## Room anatomy
 
@@ -212,6 +221,8 @@ are the artifact types tracked for it.
 **Distinguish the base states** — do not collapse them:
 - **Pointer unreadable / empty / relative:** ignore it and fall through to the
   default; never treat an empty pointer as an empty base.
+- **An absolute pointer whose base does not exist yet:** retain that location
+  as the bootstrap target rather than silently switching to the default.
 - **Base absent, or present but holding zero *valid* `room.yaml` manifests:**
   first-run → bootstrap. List any malformed rooms separately; never modify them.
 - **Base holds ≥1 valid room:** show the picker.
@@ -242,8 +253,8 @@ operation (default: **Orient**).
 BASE="${PROJECT_ROOMS_DIR:-}"
 if [ -z "$BASE" ]; then
   PTR="$(sed -n '1p' ~/.config/project-rooms/base 2>/dev/null)"
-  case "$PTR" in "~"*) PTR="$HOME${PTR#\~}";; esac
-  { [ -n "$PTR" ] && [ -d "$PTR" ]; } && BASE="$PTR" || BASE="$HOME/project-rooms"
+  case "$PTR" in "~") PTR="$HOME";; "~/"*) PTR="$HOME/${PTR#\~/}";; esac
+  case "$PTR" in /*) BASE="$PTR";; *) BASE="$HOME/project-rooms";; esac
 fi
 valid=0
 for f in "$BASE"/*/room.yaml; do
@@ -300,7 +311,8 @@ mode.
    with `awk -F','` — free-text/path cells contain commas and quotes and will
    mis-parse; if you must use the CSV, read it with a real CSV parser.
 3. **Read the summary, not the original** — `03_source_summaries/<SourceID>-<slug>.md`.
-   Cite the Source ID. Stop if answered.
+   Use the existing canonical path for that ID; snapshots are historical, not
+   competing current summaries. Cite the Source ID. Stop if answered.
 4. **Targeted slice or subagent for raw.** Only if the summary is insufficient:
    small file → `grep -n` then view only the ±20 lines; large file / many files →
    dispatch a subagent (context firewall) that reads the raw in its own context
