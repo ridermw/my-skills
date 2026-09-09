@@ -434,6 +434,239 @@ test("every client prompt keeps dynamic context inside one intact data boundary"
     assert.match(prompts.recapture, /index\.md/);
 });
 
+test("client prompt formatting controls are escaped in all builders with exact path round trips", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    const result = await page.evaluate(() => {
+        const ranges = [[0, 31], [127, 159], [0x61c, 0x61c], [0x200b, 0x200f], [0x2028, 0x202e], [0x2060, 0x206f], [0xfeff, 0xfeff]];
+        const controls = ranges.flatMap(([start, end]) =>
+            Array.from({ length: end - start + 1 }, (_, index) => String.fromCharCode(start + index))).join("");
+        const marker = "CONTROL_" + controls + "_END";
+        const rootPath = "/fixtures/" + marker + "/room ";
+        const sourcePath = "01_inbox/" + marker + "/capture.json";
+        const indexPath = "02_inventory/" + marker + "/chat-index.md";
+        const d = {
+            ...DATA, name: marker, root: rootPath,
+            health: { ...DATA.health, inboxPending: [sourcePath] },
+            teams: { rel: indexPath, counts: { unregistered: 1 }, unattributedCaptures: [{ id: marker, path: sourcePath }] },
+        };
+        const c = {
+            name: marker, chatId: marker, type: marker, sourceIds: [marker],
+            isStale: true, lastCaptured: marker, daysSinceCapture: 1,
+            incompleteCaptures: [{ sourceId: marker, completeNote: marker }],
+            missingArtifacts: [{ label: marker, date: marker }],
+            unregistered: [{ id: marker, path: sourcePath, type: marker, date: marker }],
+            needsRecapture: true,
+        };
+        return {
+            rootPath, sourcePath, indexPath,
+            prompts: {
+                index: buildIndexPrompt(d), refresh: buildRefreshPrompt(d),
+                reconcile: buildReconcilePrompt(c, d.name, rootPath),
+                recapture: buildRecapturePrompt(c, d.name, rootPath),
+                nugget: buildNuggetPrompt(c, d.name, rootPath),
+                task: buildTaskPrompt(c, d.name, rootPath),
+                reconciliationTask: buildTaskPrompt({ ...c, needsRecapture: false, needsReconciliation: true }, d.name, rootPath),
+            },
+        };
+    });
+    const unsafe = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+    for (const [name, prompt] of Object.entries(result.prompts)) {
+        assert.doesNotMatch(prompt, unsafe, name);
+        const lines = prompt.split("\n");
+        assert.equal(lines.filter((line) => line.startsWith("--- BEGIN ROOM DATA ")).length, 1, name);
+        assert.equal(lines.filter((line) => line === "--- END ROOM DATA ---").length, 1, name);
+        assert.equal(JSON.parse(/^room folder: (.+)$/mi.exec(prompt)[1]), result.rootPath, name);
+    }
+    for (const [name, paths] of [["index", [result.sourcePath, result.indexPath]], ["reconcile", [result.sourcePath]]]) {
+        const quoted = result.prompts[name].match(/"(?:\\.|[^"\\])*"/g).map((value) => JSON.parse(value));
+        for (const expected of paths) assert.ok(quoted.includes(expected), `${name} must preserve the exact target`);
+    }
+});
+
+test("client task reasons reflect independent capture gaps and keep only clean routine fallbacks", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    const prompts = await page.evaluate(() => {
+        const base = { name: "Alpha", sourceIds: ["S001"], incompleteCaptures: [], missingArtifacts: [] };
+        return {
+            none: buildTaskPrompt({ ...base, noCaptures: true, needsRecapture: true }, "Room", "/fixture"),
+            authored: buildTaskPrompt({ ...base, authoredIncomplete: true, needsRecapture: true }, "Room", "/fixture"),
+            combined: buildTaskPrompt({
+                ...base, noCaptures: true, authoredIncomplete: true, needsRecapture: true, needsReconciliation: true,
+                isStale: true, lastCaptured: "2026-08-01", daysSinceCapture: 39,
+                incompleteCaptures: [{ sourceId: "S002" }], missingArtifacts: [{ label: "Slides", date: "2026-08-01" }],
+            }, "Room", "/fixture"),
+            clean: buildTaskPrompt(base, "Room", "/fixture"),
+        };
+    });
+    assert.match(prompts.none, /no (?:effective )?current capture/i);
+    assert.match(prompts.authored, /index.*not fully captured/i);
+    assert.match(prompts.combined, /no (?:effective )?current capture/i);
+    assert.match(prompts.combined, /index.*not fully captured/i);
+    assert.match(prompts.combined, /last captured 2026-08-01/);
+    assert.match(prompts.combined, /S002 is a partial capture/);
+    assert.match(prompts.combined, /missing Slides/);
+    assert.match(prompts.combined, /Task dependency:/);
+    for (const name of ["none", "authored", "combined"]) {
+        assert.doesNotMatch(prompts[name], /routine refresh; no coverage gap recorded/);
+        assert.match(prompts[name], /^Create a task/);
+        assert.match(prompts[name], /Record follow-up work only/);
+    }
+    assert.match(prompts.clean, /routine refresh; no coverage gap recorded/);
+});
+
+async function scopedUiRoom(t, marker, ids = ["S001", "S002"]) {
+    const root = await makeRoom(t, 2);
+    await mkdir(path.join(root, "99_review"));
+    await writeFile(path.join(root, "README.md"), `# ${marker} readme\n`);
+    await writeFile(path.join(root, "99_review/change_log.md"), `# ${marker} changes\n`);
+    await writeFile(path.join(root, "00_originals/source-1.txt"), `${marker} source contents\n`);
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+        "Source ID,Path,Authority,Current or superseded,Key claims or content",
+        ...ids.map((id, index) => `${id},00_originals/source-${index + 1}.txt,${marker},current,${marker}-only`), "",
+    ].join("\n"));
+    return root;
+}
+
+async function selectOldRoomState(page) {
+    await page.locator("#tab-inventory").click();
+    await page.locator("#q").fill("old-only");
+    await page.waitForFunction(() => Q === "old-only");
+    await page.locator('#facets [data-f="Authority"][data-v="old"]').click();
+    await page.locator("#sort").selectOption("name");
+    await page.locator('#list [data-id="S001"]').click();
+    await page.locator("#openfile").click();
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("old source contents"));
+    await page.locator("#tab-review").click();
+    await page.locator('#doctree [data-k="change_log"]').click();
+}
+
+async function roomUiState(page) {
+    return page.evaluate(() => ({
+        root: DATA.root, view: VIEW, source: SEL, file: FILE, document: LOGKEY, query: Q, sort: SORT, browse: BROWSE,
+        filters: Object.fromEntries(Object.entries(FILTERS).map(([key, values]) => [key, [...values]])),
+    }));
+}
+
+async function browseFixture(page, root) {
+    await page.route("**/api/browse", (route) => route.fulfill({
+        json: { ok: true, roots: [{ name: "Fixture", path: root }], rooms: [], browse: null },
+    }));
+    await page.locator("#switchroom").click();
+    await page.locator(".dirlist [data-browse]").click();
+    await page.locator(".crumbs").waitFor();
+}
+
+for (const [name, ids] of [["disjoint", ["NEW-S001", "NEW-S002"]], ["same-named", ["S001", "S002"]]]) {
+    test(`room root transition clears ${name} selections and old inventory state only after success`, async (t) => {
+        const root = await scopedUiRoom(t, "old");
+        const next = await scopedUiRoom(t, "new", ids);
+        const { page } = await openPage(t, root);
+        await selectOldRoomState(page);
+        await browseFixture(page, root);
+        const generation = await page.evaluate(() => fileLoadGeneration);
+        await page.locator("#pathin").fill(next);
+        await page.locator("#pathin").press("Enter");
+        await page.waitForFunction((expected) => DATA.root === expected, next);
+        assert.deepEqual(await roomUiState(page), {
+            root: next, view: "overview", source: null, file: null, document: null,
+            query: "", sort: "id", browse: null, filters: {},
+        });
+        assert.ok(await page.evaluate((previous) => fileLoadGeneration > previous, generation));
+        await assertKeyboardFocus(page, "#tab-overview");
+        await page.locator("#tab-inventory").click();
+        assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), ids);
+        assert.equal(await page.locator("#q").inputValue(), "");
+        assert.equal(await page.locator('#facets [aria-pressed="true"]').count(), 0);
+        assert.equal(await page.locator('#list [aria-selected="true"]').count(), 0);
+        await page.locator("#tab-files").click();
+        assert.equal(await page.locator('#tree [aria-current="true"]').count(), 0);
+        assert.match(await page.locator("#viewer").textContent(), /Pick a file/);
+        await page.locator("#tab-review").click();
+        assert.match(await page.locator("#docviewer").textContent(), /new readme/);
+        assert.doesNotMatch(await page.locator("#docviewer").textContent(), /new changes/);
+    });
+}
+
+test("room root transition preserves failed selections and canonical same-room refresh state", async (t) => {
+    const root = await scopedUiRoom(t, "old");
+    const { page } = await openPage(t, root);
+    await selectOldRoomState(page);
+    await browseFixture(page, root);
+    const previous = await roomUiState(page);
+    const generation = await page.evaluate(() => fileLoadGeneration);
+    await page.locator("#pathin").fill(path.join(root, "missing"));
+    await page.locator("#pathin").press("Enter");
+    await page.waitForFunction(() => document.querySelector(".pickerr")?.textContent.includes("does not exist"));
+    assert.deepEqual(await roomUiState(page), previous);
+    assert.equal(await page.evaluate(() => fileLoadGeneration), generation);
+    await page.locator("#pathin").fill(root + "/.");
+    await page.locator("#pathin").press("Enter");
+    await page.locator("#docviewer").waitFor();
+    assert.deepEqual(await roomUiState(page), previous);
+    assert.match(await page.locator("#docviewer").textContent(), /old changes/);
+    await page.evaluate(async () => { await load(); render(); });
+    assert.deepEqual(await roomUiState(page), previous);
+    assert.equal(await page.evaluate(() => fileLoadGeneration), generation);
+});
+
+test("room root transition invalidates pending same-path preview replies", async (t) => {
+    const root = await scopedUiRoom(t, "old");
+    const next = await scopedUiRoom(t, "new");
+    const { page } = await openPage(t, root);
+    await page.route("**/api/browse*", (route) => route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } }));
+    let release;
+    let seen;
+    let first = true;
+    const pending = new Promise((resolve) => { release = resolve; });
+    const requested = new Promise((resolve) => { seen = resolve; });
+    await page.route("**/api/file?rel=00_originals%2Fsource-1.txt", async (route) => {
+        const response = await route.fetch();
+        if (first) {
+            first = false;
+            seen();
+            await pending;
+        }
+        await route.fulfill({ response });
+    });
+    await page.locator("#tab-files").click();
+    await page.locator('[data-rel="00_originals/source-1.txt"]').click();
+    await requested;
+    try {
+        await page.locator("#switchroom").click();
+        await page.locator("#pathin").fill(next);
+        await page.locator("#pathin").press("Enter");
+        await page.waitForFunction((expected) => DATA.root === expected, next);
+        assert.equal(await page.evaluate(() => FILE), null);
+        await page.locator("#tab-files").click();
+        await page.locator('[data-rel="00_originals/source-1.txt"]').click();
+        await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("new source contents"));
+    } finally {
+        const response = page.waitForResponse((response) => response.url().includes("api/file?rel="));
+        release();
+        await response;
+    }
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.match(await page.locator("#viewer").textContent(), /new source contents/);
+    assert.doesNotMatch(await page.locator("#viewer").textContent(), /old source contents/);
+});
+
+test("room root transition discards an old room's pending query debounce", async (t) => {
+    const root = await scopedUiRoom(t, "old");
+    const next = await scopedUiRoom(t, "new", ["NEW-S001", "NEW-S002"]);
+    const { page } = await openPage(t, root);
+    await page.locator("#tab-inventory").click();
+    await page.clock.install({ time: new Date("2026-09-09T17:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-09-09T17:00:01Z"));
+    await page.locator("#q").fill("old-only");
+    await page.evaluate((target) => openRoom(target), next);
+    await page.clock.runFor(200);
+    assert.equal(await page.evaluate(() => Q), "");
+    await page.locator("#tab-inventory").click();
+    assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), ["NEW-S001", "NEW-S002"]);
+});
+
 test("an inbox file contributes only one Overview flag", async (t) => {
     const root = await makeRoom(t);
     await mkdir(path.join(root, "01_inbox"));

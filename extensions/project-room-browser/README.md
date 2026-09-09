@@ -50,6 +50,8 @@ Conversation identity comes from declared `chat_id` metadata, not incidental
 references in notes.
 ASCII `...` and Unicode ellipses follow the same abbreviation rules, without
 promoting an abbreviated value to a full chat ID.
+Conversation-ID uniqueness uses the same normalized comparison as matching;
+displayed IDs retain their declared spelling.
 
 ## Screenshot
 
@@ -82,6 +84,8 @@ Sweep registration and reconciliation also route through Index, including its
 maintenance snapshot and human review gate.
 Make a task records follow-up work and completion criteria, rather than asking
 the agent to perform that maintenance immediately.
+Its reasons include missing captures and an index marked not fully captured;
+those gaps never become a routine-refresh claim.
 
 Room content is treated as untrusted data throughout: it is HTML-escaped in the
 UI, and dynamic context stays inside labelled data blocks in every generated
@@ -89,12 +93,21 @@ prompt. Values are quoted and bounded; sweep plans carry escaped JSON.
 Inspect generated instructions before running them with an authenticated agent.
 Prompt paths preserve their exact spelling, including whitespace, within a
 32,768-character budget; larger paths are explicitly omitted, not shortened into
-a different target. Bounded inbox listings report both the total and omitted
+a different target. Formatting controls are escaped in copied client prompts
+without changing JSON-decoded paths. Bounded inbox listings report both the total and omitted
 path counts.
 Agent source searches return the full matched count alongside the limited rows.
+Summary actions return exact totals and omitted counts alongside bounded samples:
+20 entries and 4 KiB per collection, with a 32 KiB serialized JSON result budget.
+Use `healthTotals`, not sample lengths, to assess drift. Oversized sample entries
+are omitted whole, not shortened into another Source ID or path; a room path
+that cannot fit is explicitly omitted with `rootOmitted`.
 Room selection also preserves the entered path's whitespace. File previews keep
 their Back control during loading and errors, returning keyboard focus to the
 file tree without accepting a late response.
+After a successful change of room root, the browser clears room-specific
+selections and filters and rejects old preview and search callbacks.
+Same-room refreshes and failed loads preserve that state.
 View updates preserve logical keyboard focus and text selection, or move to a
 visible destination control. Date sorting uses the same calendar validation as
 coverage; unusable dates stay last in both directions.

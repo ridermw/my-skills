@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { makeRoom } from "./helpers/canvas-fixture.mjs";
 
@@ -23,6 +23,7 @@ hooks.deregister();
 const canvas = globalThis.canvasTestRegistration;
 delete globalThis.canvasTestRegistration;
 const search = canvas.actions.find((action) => action.name === "find_sources").handler;
+const getSummary = canvas.actions.find((action) => action.name === "get_summary").handler;
 let nextInstance = 0;
 
 test("authority schema example matches a canonical inventory through the real action", async (t) => {
@@ -38,8 +39,8 @@ test("authority schema example matches a canonical inventory through the real ac
     assert.deepEqual(result.rows.map((row) => row.id), ["S001"]);
 });
 
-async function openFixture(t) {
-    const root = await makeRoom(t, 25);
+async function openFixture(t, count = 25) {
+    const root = await makeRoom(t, count);
     const instanceId = `test-${nextInstance++}`;
     const opened = await canvas.open({ instanceId, input: { path: root } });
     t.after(() => canvas.onClose({ instanceId }));
@@ -101,4 +102,101 @@ test("source actions retain canonical lifecycle values from the room reader", as
     assert.equal(result.rows[0].lifecycle, "current");
     const summary = await canvas.actions.find((action) => action.name === "get_summary").handler({ instanceId });
     assert.equal(summary.lifecycle.current, 25);
+});
+
+test("summary counts inherited-property names as ordinary authority and lifecycle buckets", async (t) => {
+    const { root, instanceId } = await openFixture(t);
+    const values = ["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf", "Primary"];
+    const rows = ["Source ID,Path,Authority,Current or superseded"];
+    for (const [i, value] of values.entries()) {
+        rows.push(`S${i}a,00_originals/source-1.txt,${value},${value}`);
+        rows.push(`S${i}b,00_originals/source-2.txt,${value},${value}`);
+    }
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), rows.join("\n"));
+    const result = JSON.parse(JSON.stringify(await getSummary({ instanceId })));
+    for (const field of ["authority", "lifecycle"]) {
+        assert.equal(Object.keys(result[field]).length, 6);
+        for (const value of values) {
+            assert.equal(Object.hasOwn(result[field], value), true);
+            assert.equal(result[field][value], 2);
+        }
+    }
+    assert.equal(result.sources, 12);
+});
+
+test("summary caps drift samples while reporting exact totals and omissions", async (t) => {
+    const { root, instanceId } = await openFixture(t);
+    await writeFile(path.join(root, "room.yaml"), "project: Drift fixture\nrender_expiry_days: 1\n");
+    const rows = ["Source ID,Path,Authority,Current or superseded,Date"];
+    for (let i = 0; i < 45; i++) {
+        rows.push(`S${i},00_originals/missing-${i}.txt,Rendered,historical,2000-01-01`);
+    }
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), rows.join("\n"));
+    await mkdir(path.join(root, "01_inbox"));
+    for (let i = 0; i < 25; i++) await writeFile(path.join(root, "01_inbox", `pending-${i}.txt`), "");
+    const result = await getSummary({ instanceId });
+    assert.equal(result.health.missingOnDisk.length, 20);
+    const totals = { staleRenders: 45, notCurrent: 45, missingOnDisk: 45, uninventoried: 50, inboxPending: 25, recognisedDirs: 2 };
+    for (const [field, total] of Object.entries(totals)) {
+        assert.equal(result.healthTotals[field], total);
+        assert.equal(result.health[field].length, Math.min(total, 20));
+        assert.equal(result.healthOmitted[field], total - result.health[field].length);
+    }
+    assert.equal(result.sources, 45);
+    assert.equal(result.authority.Rendered, 45);
+    assert.equal(result.health.unrecognisedLayout, false);
+});
+
+test("summary omits oversized evidence whole without starving later exact samples", async (t) => {
+    const { root, instanceId } = await openFixture(t);
+    const hugeId = "S" + "x".repeat(5000);
+    const hugeAuthority = "A".repeat(6000);
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+        "Source ID,Path,Authority,Current or superseded",
+        `${hugeId},00_originals/source-1.txt,${hugeAuthority},historical`,
+        "MEMO-S0007,00_originals/missing.txt,Primary,historical",
+    ].join("\n"));
+    const result = await getSummary({ instanceId });
+    assert.equal(result.health.notCurrent.length, 1);
+    assert.equal(result.health.notCurrent[0].id, "MEMO-S0007");
+    assert.equal(result.health.notCurrent[0].path, "00_originals/missing.txt");
+    assert.equal(result.healthTotals.notCurrent, 2);
+    assert.equal(result.healthOmitted.notCurrent, 1);
+    assert.equal(result.bucketTotals.authority, 2);
+    assert.equal(result.bucketOmitted.authority, 1);
+    assert.deepEqual(Object.entries(result.authority), [["Primary", 1]]);
+    assert.equal(result.root, root);
+    assert.equal(result.rootOmitted, false);
+});
+
+test("summary enforces UTF-8 collection and whole-result byte budgets", async (t) => {
+    const { root, instanceId } = await openFixture(t, 0);
+    const text = "\u754c";
+    await writeFile(path.join(root, "room.yaml"),
+        `project: ${text.repeat(6000)}\nnote: ${text.repeat(6000)}\nrender_expiry_days: 1\n`);
+    const rows = ["Source ID,Path,Authority,Current or superseded,Date"];
+    for (let i = 0; i < 70; i++) {
+        rows.push(`S${i}${text.repeat(256)},00_originals/missing-${i}.txt,Rendered${i}${text.repeat(128)},historical${i}${text.repeat(128)},2000-01-01`);
+    }
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), rows.join("\n"));
+    const inbox = path.join(root, "01_inbox", "d".repeat(200));
+    await mkdir(inbox, { recursive: true });
+    for (let i = 0; i < 25; i++) await writeFile(path.join(inbox, `${i}-${"f".repeat(100)}.txt`), "");
+    const result = await getSummary({ instanceId });
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 32768);
+    assert.equal(result.sources, 70);
+    for (const field of ["authority", "lifecycle"]) {
+        assert.equal(result.bucketTotals[field], 70);
+        assert.equal(result.bucketOmitted[field], 70 - Object.keys(result[field]).length);
+        assert.ok(Object.keys(result[field]).length <= 20);
+        assert.ok(Buffer.byteLength(JSON.stringify(result[field])) <= 4096);
+    }
+    for (const [field, total] of Object.entries({ staleRenders: 70, notCurrent: 70, missingOnDisk: 70, uninventoried: 25, inboxPending: 25, recognisedDirs: 2 })) {
+        assert.equal(result.healthTotals[field], total);
+        assert.equal(result.healthOmitted[field], total - result.health[field].length);
+        assert.ok(result.health[field].length <= 20);
+        assert.ok(Buffer.byteLength(JSON.stringify(result.health[field])) <= 4096);
+    }
+    assert.match(result.name, /\[truncated\]$/);
+    assert.match(result.note, /\[truncated\]$/);
 });

@@ -29,6 +29,7 @@ let fileLoadGeneration = 0;
 let LOGKEY = null;
 let FILTERS = {};
 let Q = "";
+let roomGeneration = 0;
 
 /* ---------------- markdown ---------------- */
 const BT = String.fromCharCode(96);
@@ -215,6 +216,19 @@ async function load(pathOverride) {
         const error = new Error(j.error || "Failed to read room");
         error.code = j.code;
         throw error;
+    }
+    if (DATA && DATA.root !== j.room.root) {
+        VIEW = "overview";
+        SEL = null;
+        FILE = null;
+        LOGKEY = null;
+        FILTERS = {};
+        Q = "";
+        SORT = "id";
+        BROWSE = null;
+        roomGeneration++;
+        fileLoadGeneration++;
+        pickerLoadGeneration++;
     }
     DATA = j.room;
     window.__ROOM_PATH__ = DATA.root;
@@ -774,7 +788,9 @@ function renderInventory() {
     </div>`);
 
     const q = $("#q");
+    const generation = roomGeneration;
     q.oninput = debounce(() => {
+        if (generation !== roomGeneration) return;
         Q = q.value;
         delete FILTERS["Source ID"];
         renderInventory();
@@ -1065,7 +1081,7 @@ const UNTRUSTED_BANNER =
 const UNTRUSTED_END = "--- END ROOM DATA ---";
 
 function quotedString(value) {
-    return JSON.stringify(value).replace(/[\u0080-\u009f\u2028\u2029]/g,
+    return JSON.stringify(value).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g,
         (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 }
 
@@ -1244,6 +1260,8 @@ function buildTaskPrompt(c, roomName, root) {
         ].join("\n");
     }
     const why = [];
+    if (c.noCaptures) why.push("no effective current capture is recorded");
+    if (c.authoredIncomplete) why.push("conversation index marks this thread as not fully captured");
     if (c.isStale) why.push("last captured " + c.lastCaptured + ", " + c.daysSinceCapture + " days ago");
     for (const x of c.incompleteCaptures || []) why.push(x.sourceId + " is a partial capture");
     for (const m of c.missingArtifacts || []) why.push("missing " + m.label + " for " + m.date);

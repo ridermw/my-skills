@@ -1497,6 +1497,22 @@ test("declared detail identity uniqueness rejects one chat ID under multiple ord
     })), /duplicate detail chat ID/i);
 });
 
+for (const reverse of [false, true]) {
+    test(`declared identity canonical casing rejects duplicate conversation actions, reverse=${reverse}`, () => {
+        const details = [detail(1, "Alpha", alphaId), detail(2, "Renamed Alpha", alphaId.toUpperCase())];
+        assert.throws(() => teams.parseChatIndex(chatIndex({
+            details: reverse ? details.reverse() : details,
+        })), /duplicate detail chat ID/i);
+    });
+}
+
+test("declared identity canonical casing preserves distinct IDs and their display spelling", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        details: [detail(1, "Alpha", alphaId.toUpperCase()), detail(2, "Beta", betaId)],
+    }));
+    assert.deepEqual(parsed.conversations.map((c) => c.chatId), [alphaId.toUpperCase(), betaId]);
+});
+
 for (const mode of ["clean", "reconciliation", "recapture"]) {
     test(`sweep Index ownership preserves the snapshot and review gate for ${mode}`, () => {
         const health = mode === "reconciliation"

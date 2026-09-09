@@ -228,8 +228,9 @@ export function parseChatIndex(text) {
         const body = sec.lines.join("\n");
         if (sec.chatIds.size > 1) throw new Error("Invalid chat index: conflicting chat_id declarations for conversation " + index);
         const chatId = sec.chatIds.values().next().value || null;
-        if (chatId && detailChatIds.has(chatId)) throw new Error("Invalid chat index: duplicate detail chat ID");
-        if (chatId) detailChatIds.add(chatId);
+        const chatKey = normaliseChatId(chatId);
+        if (chatKey && detailChatIds.has(chatKey)) throw new Error("Invalid chat index: duplicate detail chat ID");
+        if (chatKey) detailChatIds.add(chatKey);
         const meta = labelled(sec.lines);
         const title = numbered[2];
         const dash = title.split(/\s+[—–]\s+/);
