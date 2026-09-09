@@ -40,6 +40,12 @@ Source chips select the complete Source ID, not a substring match.
 Overview badges and cards use the same warning model. The coverage reader and
 Markdown preview share table-cell parsing so escaped pipes cannot shift columns.
 
+## Screenshot
+
+The running standalone canvas with synthetic demo data:
+
+![Source inventory with authority/lifecycle filters and selected evidence details](assets/canvas.png)
+
 ## Theming
 
 The panel has no palette and no theme picker. It aliases the host's canvas
