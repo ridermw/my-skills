@@ -24,7 +24,10 @@ All notable changes to the skills in this repo.
   Non-checked-out defaults update from already-fetched local refs, retaining
   worktree protection and local-ahead history. Diagnostic stderr stays separate
   from parsed Git output, so a warning cannot turn a clean checkout into a
-  reported dirty skip or contaminate commit IDs and counts.
+  reported dirty skip or contaminate commit IDs and counts. Preserve fetch
+  filters and verify selected tracking commits against current remote tips
+  before updates or dirty behind-counts. Missing/stale refs fail closed;
+  subsequent operations use the verified commit ID (review of #8).
 - **`project-room`** — shortened its description to fit portable loader limits.
   The base resolver rejects relative pointers and preserves a valid absolute
   bootstrap target even when absent. Existing summaries and `prep_summary.json`

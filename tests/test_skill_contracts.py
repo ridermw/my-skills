@@ -186,6 +186,65 @@ class SyncReposTests(IsolatedFixture):
         self.assertEqual(self.sync(), "advanced 1 commits")
         self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), tip)
 
+    def test_current_branch_rejects_stale_fetch_filtered_upstream(self):
+        self.git(self.repo, "config", "--add", "remote.origin.fetch", "^refs/heads/main")
+        filters = self.git(self.repo, "config", "--get-all", "remote.origin.fetch")
+        self.advance()
+        result = self.sync()
+        self.assertIn("error:", result)
+        self.assertIn("stale", result)
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), self.original)
+        self.assertEqual(self.git(self.repo, "rev-parse", "origin/main"), self.original)
+        self.assertEqual(self.git(self.repo, "config", "--get-all", "remote.origin.fetch"), filters)
+
+    def test_default_branch_rejects_stale_fetch_filtered_default(self):
+        self.git(self.seed, "push", "--quiet", "origin", "main:other")
+        self.git(
+            self.repo, "config", "--replace-all", "remote.origin.fetch",
+            "+refs/heads/other:refs/remotes/origin/other",
+        )
+        self.git(self.repo, "switch", "--quiet", "-c", "feature")
+        self.advance()
+        result = self.sync("default-branch")
+        self.assertIn("error:", result)
+        self.assertIn("stale", result)
+        self.assertEqual(self.git(self.repo, "rev-parse", "main"), self.original)
+        self.assertEqual(self.git(self.repo, "rev-parse", "origin/main"), self.original)
+        self.assertEqual(self.git(self.repo, "branch", "--show-current"), "feature")
+
+    def test_dirty_count_rejects_stale_fetch_filtered_upstream(self):
+        self.git(self.repo, "config", "--add", "remote.origin.fetch", "^refs/heads/main")
+        self.advance()
+        (self.repo / "fixture.txt").write_text("unsaved user work\n")
+        for scope in ("current-branch", "default-branch"):
+            with self.subTest(scope=scope):
+                result = self.sync(scope)
+                self.assertIn("error:", result)
+                self.assertIn("stale", result)
+                self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), self.original)
+                self.assertEqual((self.repo / "fixture.txt").read_text(), "unsaved user work\n")
+
+    def test_configured_upstream_excluded_by_fetch_mapping_is_an_error(self):
+        self.git(self.seed, "push", "--quiet", "origin", "main:other")
+        self.git(
+            self.repo, "config", "--replace-all", "remote.origin.fetch",
+            "+refs/heads/other:refs/remotes/origin/other",
+        )
+        self.advance()
+        self.assertIn("error:", self.sync())
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD"), self.original)
+
+    def test_dirty_default_scope_ignores_unselected_stale_default(self):
+        self.git(self.seed, "push", "--quiet", "origin", "main:topic")
+        self.git(self.repo, "fetch", "--quiet", "origin")
+        self.git(self.repo, "switch", "--quiet", "-c", "feature")
+        self.git(self.repo, "branch", "--set-upstream-to=origin/topic", "feature")
+        self.git(self.repo, "config", "--add", "remote.origin.fetch", "^refs/heads/main")
+        self.advance()
+        (self.repo / "fixture.txt").write_text("unsaved user work\n")
+        self.assertEqual(self.sync("default-branch"), "dirty (skipped), 0 behind")
+        self.assertEqual(self.git(self.repo, "rev-parse", "origin/main"), self.original)
+
     def test_index_lock_is_an_error_not_divergence(self):
         self.advance()
         (self.repo / ".git/index.lock").write_text("another process\n")

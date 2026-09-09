@@ -48,8 +48,9 @@ such repos in the report and stop.
    them. If `root` is itself a clone *and* holds nested clones, both levels are
    in scope and every one of them appears in the report — nothing is updated
    invisibly, and every update is still fast-forward-only.
-2. **Confirm an `origin` remote exists**, then **fetch what this run actually
-   needs — not every remote.** Everything here resolves through `origin`, so
+2. **Read local state and fetch only needed remotes.** Read the current branch
+   and dirty flag (`git status --porcelain`). Confirm an `origin` remote exists.
+   Everything here resolves through `origin`, so
    check `git remote get-url origin`: a clone whose remote is named `upstream`
    would otherwise pass a bare "some remote exists" guard and then be
    misreported as `no default branch`. Then `git fetch --prune --quiet origin`,
@@ -66,29 +67,38 @@ such repos in the report and stop.
 3. **Resolve the server's default branch when needed**, using
    `git ls-remote --symref origin HEAD` after fetching. Cached `origin/HEAD` can
    retain the old default after a rename; do not guess from `main` or `master`.
-   Verify that the advertised branch was fetched into `refs/remotes/origin/`.
+   Record both its branch name and advertised HEAD commit for verification.
    Missing symbolic HEAD means `no default branch`; a lookup failure or an
    unfetched advertised branch is an explicit error. A clean `current-branch`
    update does not depend on discovering a default branch.
-4. **Read local state (no network):** current branch and dirty flag
-   (`git status --porcelain`).
+4. **Verify the selected commit before using it.** Resolve the selected
+   tracking ref to a commit. For the default branch, compare it with the
+   advertised HEAD commit. For a configured remote upstream, compare it with
+   the exact `branch.<current>.merge` ref returned by
+   `git ls-remote --exit-code <tracking-remote> <merge-ref>`.
+   A local upstream (`branch.<current>.remote = .`) needs no remote check.
+   Preserve configured fetch refspecs: never override an exclusion or fetch
+   an excluded branch separately to make verification pass. A missing,
+   unmapped, stale, or unverifiable selected ref is `error: <reason>`, before
+   any update or behind-count. Use the verified commit ID for every later
+   count, ancestry check, and update, not a tracking ref that could move.
 5. **Fast-forward safely.** Every result must be distinguishable — always capture
    the branch tip **before** and **after** the operation and derive the result
    from the difference. Never report success on exit code alone: `merge --ff-only`
    and `fetch <b>:<b>` both exit 0 when nothing moved, so an exit-code-only check
    cannot tell `advanced` from `up-to-date`.
    - **Dirty** working tree → do not pull. Record `dirty (skipped), N behind`,
-     counting with `git rev-list --count HEAD..@{u}` (or `..origin/<default>`
-     when there is no upstream) so the user knows how stale it is. Report a
-     counting failure as an error rather than inventing a behind-count.
+     counting with `git rev-list --count HEAD..<verified-commit>` for its
+     upstream, or the default branch when no upstream is configured. Report a
+     verification/counting failure as an error rather than inventing a count.
    - `scope=current-branch`: if the current branch has no upstream, record
      `no upstream (skipped)` — do **not** silently fall back to the default
      branch. Otherwise fast-forward to the fetched upstream commit.
    - `scope=default-branch`, default branch **is** checked out:
      fast-forward to the fetched `origin/<default>` commit.
    - `scope=default-branch`, default branch **is not** checked out: update it
-     without checkout by fetching the already-fetched remote-tracking ref from
-     the local repository (`git fetch . <remote-ref>:refs/heads/<default>`).
+     without checkout by fetching the verified commit from the local
+     repository (`git fetch . <verified-commit>:refs/heads/<default>`).
      This avoids a second network fetch racing the ancestry check. A branch
      checked out in another worktree is `in use by another worktree (skipped)`.
    - **Classify history before updating.** Use `git merge-base --is-ancestor`
@@ -154,31 +164,46 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
     else error "fetch failed ($upr)" "$err"; continue; fi
   fi
   upstream="$(git -C "$repo" rev-parse --verify --quiet --symbolic-full-name '@{u}' 2>/dev/null)"
-  def=""
-  if [ "$SCOPE" = default-branch ] || { [ -n "$dirty" ] && [ -z "$upstream" ]; }; then
+  merge_ref="$(git -C "$repo" config --get "branch.$cur.merge")"
+  if { [ "$SCOPE" = current-branch ] || [ -n "$dirty" ]; } &&
+     [ -z "$upstream" ] && { [ -n "$upr" ] || [ -n "$merge_ref" ]; }; then
+    error "configured upstream ref unavailable (check fetch filters)" ""; continue
+  fi
+  ref="$upstream"; remote="$upr"; expected=""
+  if { [ "$SCOPE" = default-branch ] && [ -z "$dirty" ]; } ||
+     { [ -n "$dirty" ] && [ -z "$upstream" ]; }; then
     if advertised="$(git -C "$repo" ls-remote --symref origin HEAD)"; then :;
     else error "default branch lookup failed" ""; continue; fi
     def="$(printf '%s\n' "$advertised" | sed -n 's#^ref: refs/heads/\([^[:space:]]*\)[[:space:]]HEAD$#\1#p')"
     [ -n "$def" ] || { r "$name" "$cur" "no default branch"; continue; }
-    git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$def" ||
-      { error "advertised default branch was not fetched ($def)" ""; continue; }
+    ref="refs/remotes/origin/$def"; remote=origin
+    expected="$(printf '%s\n' "$advertised" | awk '$2 == "HEAD" {print $1}')"
+    [ -n "$dirty" ] || target="$def"
+  else
+    [ -n "$ref" ] || { r "$name" "$cur" "no upstream (skipped)"; continue; }
+    if [ "$remote" != . ]; then
+      [ -n "$remote" ] && [ -n "$merge_ref" ] ||
+        { error "cannot identify configured upstream" ""; continue; }
+      if advertised="$(git -C "$repo" ls-remote --exit-code "$remote" "$merge_ref")"; then :;
+      else error "upstream lookup failed ($remote $merge_ref)" ""; continue; fi
+      expected="$(printf '%s\n' "$advertised" | awk -v ref="$merge_ref" '$2 == ref {print $1}')"
+    fi
+  fi
+  if desired="$(git -C "$repo" rev-parse --verify "$ref^{commit}")"; then :;
+  else error "selected ref unavailable ($ref); check fetch filters" ""; continue; fi
+  if [ "$remote" != . ]; then
+    [ -n "$expected" ] || { error "selected remote commit was not advertised" ""; continue; }
+    [ "$desired" = "$expected" ] ||
+      { error "stale tracking ref ($ref); check fetch filters or retry" ""; continue; }
   fi
   if [ -n "$dirty" ]; then
-    ref="${upstream:-refs/remotes/origin/$def}"
-    if behind="$(git -C "$repo" rev-list --count "HEAD..$ref")"; then
+    if behind="$(git -C "$repo" rev-list --count "HEAD..$desired")"; then
       r "$name" "$cur" "dirty (skipped), $behind behind"
     else error "cannot count commits behind" ""; fi
     continue
   fi
-  if [ "$SCOPE" = "current-branch" ]; then
-    [ -n "$upstream" ] || { r "$name" "$cur" "no upstream (skipped)"; continue; }
-  else
-    target="$def"; upstream="refs/remotes/origin/$def"
-  fi
   suffix=""; [ "$target" = "$cur" ] || suffix=" (on $cur)"
   before="$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$target")"
-  if desired="$(git -C "$repo" rev-parse --verify "$upstream^{commit}")"; then :;
-  else error "cannot resolve upstream commit" ""; continue; fi
   if [ -n "$before" ]; then
     if git -C "$repo" merge-base --is-ancestor "$desired" "$before"; then
       r "$name" "$target" "up-to-date$suffix"; continue
@@ -197,7 +222,7 @@ find "$ROOT" -maxdepth 2 -name node_modules -prune -o -name .git -type d -print 
     if err="$(git -C "$repo" merge --ff-only "$desired" --quiet 2>&1)"; then :;
     else error "merge failed" "$err"; continue; fi
   else
-    if err="$(git -C "$repo" fetch --quiet . "$upstream:refs/heads/$target" 2>&1)"; then :;
+    if err="$(git -C "$repo" fetch --quiet . "$desired:refs/heads/$target" 2>&1)"; then :;
     else
       case "$err" in
         *"checked out at"*|*"current branch"*) r "$name" "$target" "in use by another worktree (skipped)";;

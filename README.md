@@ -54,7 +54,8 @@ Operational workflows still need the corresponding environment capabilities:
 
 - `sync-repos` — needs `git` on `PATH` and an agent that can run shell commands.
   Its reference loop uses Bash/POSIX utilities; native Windows hosts need Git
-  Bash/WSL or a faithful PowerShell translation.
+  Bash/WSL or a faithful PowerShell translation. Fetch filters are preserved;
+  stale or unverifiable selected refs produce errors, not guessed sync results.
 - `ado-pr-build-monitor` — needs Azure DevOps access, via either the
   [Azure DevOps MCP server](https://github.com/microsoft/azure-devops-mcp) or the
   Azure CLI with the `azure-devops` extension. Logs require authenticated GET
