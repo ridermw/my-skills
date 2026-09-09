@@ -64,6 +64,10 @@ Room content is treated as untrusted data throughout: it is HTML-escaped in the
 UI, and dynamic context stays inside labelled data blocks in every generated
 prompt. Values are quoted and bounded; sweep plans carry escaped JSON.
 Inspect generated instructions before running them with an authenticated agent.
+Prompt paths preserve their exact spelling, including whitespace, within a
+32,768-character budget; larger paths are explicitly omitted, not shortened into
+a different target. Bounded inbox listings report both the total and omitted
+path counts.
 
 ## Local access
 

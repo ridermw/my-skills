@@ -929,7 +929,7 @@ test("readRoom resolves tilde roots consistently with browseDir in an isolated h
         }
         assert.equal((await readRoom("~/room")).root, process.argv[1]);
         console.log("isolated tilde roots");
-    `, root], { env: { ...process.env, HOME: base }, cwd: outside, timeout: 30000 });
+    `, root], { env: { ...process.env, HOME: base, USERPROFILE: base }, cwd: outside, timeout: 30000 });
     assert.equal(stdout.trim(), "isolated tilde roots");
 });
 
@@ -948,3 +948,63 @@ for (const lifecycleColumn of ["Lifecycle", "Current or superseded"]) {
         assert.equal(room.sources[1].Lifecycle, "current");
     });
 }
+
+async function withNativeHomeFallback(t, assertions) {
+    const { base, root, outside } = await fixture(t);
+    await mkdir(path.join(outside, "Documents"));
+    const env = Object.fromEntries(Object.entries(process.env)
+        .filter(([key]) => !["HOME", "USERPROFILE"].includes(key.toUpperCase())));
+    env.USERPROFILE = base;
+    const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", `
+        import assert from "node:assert/strict";
+        import path from "node:path";
+        import os from "node:os";
+        import fs from "node:fs/promises";
+        import { syncBuiltinESMExports } from "node:module";
+        const [base, root] = process.argv.slice(1);
+        const home = os.homedir();
+        assert.equal(process.env.HOME, undefined);
+        if (process.platform === "win32") assert.equal(home, base);
+        // Keep the native account lookup real without traversing real home contents.
+        const realReaddir = fs.readdir;
+        const realBase = await fs.realpath(base);
+        fs.readdir = async (target, ...options) => {
+            const absolute = path.resolve(target);
+            if (![base, realBase].some((allowed) => absolute === allowed || absolute.startsWith(allowed + path.sep))) return [];
+            return realReaddir(target, ...options);
+        };
+        syncBuiltinESMExports();
+        assert.equal((await import("node:fs/promises")).readdir, fs.readdir);
+        const api = await import(${JSON.stringify(moduleUrl)});
+        const homeExists = await fs.stat(home).then((info) => info.isDirectory(), (error) => {
+            if (error.code === "ENOENT") return false;
+            throw error;
+        });
+        ${assertions}
+        console.log("native home fallback checked");
+    `, base, root], { env, cwd: outside, timeout: 30000 });
+    assert.equal(stdout.trim(), "native home fallback checked");
+}
+
+test("native home fallback resolves tilde paths with HOME missing", async (t) => {
+    await withNativeHomeFallback(t, `
+        const relative = path.relative(home, root).split(path.sep).join("/");
+        const input = "~/" + relative;
+        assert.notEqual(path.resolve(relative), root);
+        let room;
+        await assert.doesNotReject(async () => { room = await api.readRoom(input); });
+        assert.equal(room.root, root);
+        assert.equal(room.name, "Fixture");
+        assert.equal((await api.browseDir(input)).path, root);
+        if (homeExists) assert.equal((await api.browseDir("~")).path, path.resolve(home));
+    `);
+});
+
+test("native home fallback supplies absolute starting points with HOME missing", async (t) => {
+    await withNativeHomeFallback(t, `
+        const result = await api.suggestStartingPoints();
+        assert.equal(result.roots.some((entry) => entry.path === home), homeExists);
+        assert.ok(result.roots.every((entry) => path.isAbsolute(entry.path)));
+        if (homeExists) assert.equal(result.roots.find((entry) => entry.path === home).name, "~");
+    `);
+});

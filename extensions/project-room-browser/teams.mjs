@@ -348,6 +348,7 @@ function namesMatch(a, b) {
     const A = toks(a);
     const B = toks(b);
     if (!A.size || !B.size) return false;
+    if (A.size === 1 && B.size === 1 && looseName(a) === looseName(b)) return true;
     const small = A.size <= B.size ? A : B;
     const big = A.size <= B.size ? B : A;
     let hit = 0;
@@ -409,12 +410,13 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         // re-captured show up as needing a sweep.
         const superseded = new Set(c.captures.filter((x) => x.isSuperseded).map((x) => x.sourceId));
         const hasCurrentComplete = c.captures.some(
-            (x) => x.isCurrent && x.complete === true && !superseded.has(x.sourceId)
+            (x) => x.isCurrent && x.complete === true && !superseded.has(x.sourceId) && !isFutureDate(x.captured, now)
         );
         const effectiveCaptures = c.captures.filter(
             (x) => !superseded.has(x.sourceId) && !(hasCurrentComplete && !x.isCurrent)
         );
-        const dates = effectiveCaptures.map((x) => x.captured).filter((date) => isoDateTime(date) != null).sort();
+        const dates = effectiveCaptures.map((x) => x.captured)
+            .filter((date) => isoDateTime(date) != null && !isFutureDate(date, now)).sort();
         const last = dates.length ? dates[dates.length - 1] : null;
         const age = daysSince(last, now);
         const incomplete = effectiveCaptures.filter((x) => x.complete === false);
@@ -445,7 +447,7 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
             daysSinceCapture: age,
             authoredIncomplete,
             unknownCompleteness: effectiveCaptures.some((x) => x.complete == null),
-            unknownCaptureDate: effectiveCaptures.some((x) => isoDateTime(x.captured) == null),
+            unknownCaptureDate: effectiveCaptures.some((x) => isoDateTime(x.captured) == null || isFutureDate(x.captured, now)),
             cadenceDays: cadence,
             staleWindowDays: window,
             // >= not >: the room's own gap list calls a 14-day-old capture stale.
@@ -478,7 +480,7 @@ export function refreshTeamsHealth(health) {
         const hasUnindexedSource = [...(c.sourceIds || []), ...(c.quickSourceIds || [])]
             .some((id) => !recordedIds.has(id)) || (c.unregistered || []).length > 0;
         c.noCaptures = c.effectiveCaptureCount === 0 && !hasUnindexedSource;
-        c.indexDetailGap = c.effectiveCaptureCount === 0 && hasUnindexedSource;
+        c.indexDetailGap = hasUnindexedSource;
         c.needsRecapture = !!(
             c.noCaptures || c.authoredIncomplete || (c.isStale && !c.staleDateDisputed) ||
             c.incompleteCaptures.length || c.missingArtifacts.length

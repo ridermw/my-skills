@@ -88,6 +88,12 @@ All notable changes to the skills in this repo.
   visible, and rejects ambiguous attribution or unverified dates as freshness
   evidence. Recognize Unicode conversation names, tilde room paths, and unknown
   lifecycle warnings; remove obsolete theme-catalogue comments.
+- **`project-room-browser` delayed review follow-up (#7)** — keep long paths
+  intact in generated actions and disclose omitted inbox paths without reducing
+  the total count. Use a cross-platform home lookup, reconcile missing
+  quick-map detail rows even when other captures exist, join unambiguous
+  single-token conversation names, and treat future capture dates as unverified
+  rather than evidence of current coverage.
 
 ### Added
 - **Repository-only regression coverage** — real local Git and room fixtures

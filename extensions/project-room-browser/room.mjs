@@ -4,6 +4,7 @@
 
 import { readdir, stat, realpath, lstat, open } from "node:fs/promises";
 import path from "node:path";
+import { homedir } from "node:os";
 import { parseChatIndex, teamsHealth, refreshTeamsHealth } from "./teams.mjs";
 import { isoDateTime } from "./dates.mjs";
 
@@ -835,8 +836,8 @@ export async function browseDir(dir) {
 
 function untilde(p) {
     if (!p) return p;
-    if (p === "~") return process.env.HOME || p;
-    if (p.startsWith("~/")) return path.join(process.env.HOME || "", p.slice(2));
+    if (p === "~") return homedir();
+    if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
     return p;
 }
 
@@ -845,7 +846,7 @@ function untilde(p) {
  * open with real starting points rather than an empty dead end.
  */
 export async function suggestStartingPoints() {
-    const home = process.env.HOME || "";
+    const home = homedir();
     const candidates = [];
 
     // OneDrive/CloudStorage roots vary per tenant, so discover rather than guess.

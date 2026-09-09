@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, rename, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { makeRoom, serveRoom } from "../helpers/canvas-fixture.mjs";
@@ -478,4 +478,71 @@ test("coverage cards distinguish reconciliation evidence from current coverage",
     assert.match(cards.historical, /No effective current capture/);
     assert.doesNotMatch(cards.historical, /No capture is recorded.*at all/);
     assert.match(cards.ambiguous, /could match multiple conversations/);
+});
+
+test("client prompts preserve long paths and disclose bounded inbox listings", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    const result = await page.evaluate(() => {
+        const roomPath = "/rooms/" + "nested/".repeat(60) + "folder name ";
+        const sourcePath = "01_inbox/" + "nested/".repeat(60) + "capture.md";
+        const indexPath = "02_inventory/" + "nested/".repeat(60) + "chat-index.md";
+        const d = {
+            ...DATA, root: roomPath, teams: { rel: indexPath },
+            health: {
+                ...DATA.health,
+                inboxPending: Array.from({ length: 53 }, (_, i) => i === 0 ? sourcePath : `01_inbox/file-${i + 1}.md`),
+            },
+        };
+        const c = {
+            name: "Alpha", sourceIds: ["S001"], incompleteCaptures: [], missingArtifacts: [],
+            unregistered: [{ id: "S002", path: sourcePath }],
+        };
+        return {
+            roomPath, sourcePath, indexPath,
+            prompts: {
+                index: buildIndexPrompt(d),
+                refresh: buildRefreshPrompt(d),
+                reconcile: buildReconcilePrompt(c, d.name, roomPath),
+                recapture: buildRecapturePrompt(c, d.name, roomPath),
+                nugget: buildNuggetPrompt(c, d.name, roomPath),
+                task: buildTaskPrompt(c, d.name, roomPath),
+                reconciliationTask: buildTaskPrompt({ ...c, needsReconciliation: true }, d.name, roomPath),
+            },
+        };
+    });
+    for (const [name, prompt] of Object.entries(result.prompts)) {
+        const field = /^room folder: (.+)$/mi.exec(prompt);
+        assert.ok(field, name);
+        assert.equal(JSON.parse(field[1]), result.roomPath, name);
+    }
+    assert.match(result.prompts.index, /files awaiting triage in 01_inbox: 53/);
+    assert.match(result.prompts.index, /paths shown: 40; omitted: 13/);
+    assert.ok(result.prompts.index.includes(JSON.stringify(result.indexPath)));
+    assert.ok(result.prompts.index.includes(JSON.stringify(result.sourcePath)));
+    assert.ok(result.prompts.reconcile.includes(JSON.stringify(result.sourcePath)));
+    assert.doesNotMatch(result.prompts.index, /file-41\.md/);
+    const bounds = await page.evaluate(() => ({
+        boundary: qPath("x".repeat(32768)),
+        oversized: qPath("x".repeat(32769)),
+    }));
+    assert.equal(JSON.parse(bounds.boundary).length, 32768);
+    assert.match(bounds.oversized, /path omitted/);
+    assert.doesNotMatch(bounds.oversized, /xxx/);
+});
+
+test("a real deeply nested room retains its exact action target", async (t) => {
+    const base = await makeRoom(t);
+    const root = path.join(base, ...Array.from({ length: 6 }, (_, i) => `level-${i}-${"x".repeat(40)}`));
+    await mkdir(root, { recursive: true });
+    for (const name of ["room.yaml", "00_originals", "02_inventory"]) {
+        await rename(path.join(base, name), path.join(root, name));
+    }
+    assert.ok(root.length > 300);
+    const { page } = await openPage(t, root);
+    await page.locator("#act-index").click();
+    const prompt = await page.locator("#promptout").textContent();
+    const field = /^room folder: (.+)$/mi.exec(prompt);
+    assert.ok(field);
+    assert.equal(JSON.parse(field[1]), root);
 });
