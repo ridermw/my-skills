@@ -12,8 +12,8 @@ All notable changes to the skills in this repo.
   rather than editing the room. Index, Refresh and reconciliation defer to the
   relevant `project-room` operation file. Room content is escaped in the UI
   and quoted in generated prompts.
-  Colours come entirely from the host app's theme variables, so the panel follows
-  the app's theme automatically; the stylesheet contains no colour literals.
+  Colours follow the host app's theme variables, with raw fallback tokens when
+  needed; application selectors use the semantic layer.
 
 ### Fixed
 - **`project-room-browser` review follow-up (#7)** — private fragment launch
@@ -27,6 +27,13 @@ All notable changes to the skills in this repo.
   response ordering, unknown-layout reporting, the narrow rail, and source
   result-limit validation. Added real filesystem, HTTP, SDK-action and browser
   regressions with development-only dependencies.
+- **`project-room-browser` second review pass (#7)** — reject oversized
+  metadata before parsing, recognize empty source layouts, retain effective
+  fallback links, and distinguish malformed chat indexes from absent ones.
+  Preserve full prefixed Source IDs and unambiguous conversation ordinals,
+  reject rollover dates, and keep native Windows folder/breadcrumb targets
+  intact. Inventory attribution now compares complete words and identifiers
+  rather than suppressing coverage warnings on substring collisions.
 
 ### Added
 - **`project-room`** — a **conversation index** for rooms that hold chats or

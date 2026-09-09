@@ -37,8 +37,9 @@ open the project-room canvas for ~/project-rooms/<room>
 The panel has no palette and no theme picker. It aliases the host's canvas
 theme variables (`--background-color-default`, `--text-color-default`,
 `--true-color-*`, `--font-sans`, `--font-mono`) into a raw layer, then derives
-its semantic tokens (`--color-*`, `--severity-*`) from those. The application
-stylesheet uses only the semantic layer and contains **no colour literals**.
+its semantic tokens (`--color-*`, `--severity-*`) from those. Application
+selectors use the semantic layer; the raw fallback palette contains colour
+literals for hosts that omit theme tokens.
 
 Because every token is a live `var()` reference, **the panel follows the app's
 theme automatically** — change the theme in GitHub and the whole surface
@@ -72,8 +73,10 @@ access boundary, not isolation from processes that can inspect the CLI's
 memory or private launch-link records.
 
 Manifest-selected files must remain inside the room, including through
-symlinks. Source paths use consistent separators, file previews are bounded,
-and unrecognised source layouts are reported as unverified rather than clean.
+symlinks. Metadata files are limited to 2 MiB each and rejected rather than
+partially parsed. Text previews show up to 2 MiB, and raw image previews are
+limited to 25 MiB. Source paths use consistent separators, and unrecognised
+source layouts are reported as unverified rather than clean.
 
 ## Testing
 

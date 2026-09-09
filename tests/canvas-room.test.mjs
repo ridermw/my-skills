@@ -5,13 +5,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
-import { readRoom, readRoomBytes, readRoomFile } from "../extensions/project-room-browser/room.mjs";
+import { browseDir, readRoom, readRoomBytes, readRoomFile } from "../extensions/project-room-browser/room.mjs";
+import * as roomModule from "../extensions/project-room-browser/room.mjs";
 import { makeRoom } from "./helpers/canvas-fixture.mjs";
 
 const exec = promisify(execFile);
 const moduleUrl = new URL("../extensions/project-room-browser/room.mjs", import.meta.url).href;
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const RAW_LIMIT = 25 * 1024 * 1024;
+const METADATA_LIMIT = 2 * 1024 * 1024;
 const header = "Source ID,Path,Current or superseded,Change\n";
 const inventory = header + "S001,00_originals/report.md,Current,\n";
 const chatIndex = "# Chat index\n\n## 1. Fixture chat\n\n**chat_id:** `19:fixture`\n";
@@ -87,6 +89,77 @@ for (const [key, rel, content] of maintenanceFiles) {
         else assert.equal(room.logs[key].text, content);
     });
 }
+
+for (const [key, rel, content] of maintenanceFiles) {
+    test(`metadata limit accepts exactly 2 MiB at the ${key} path`, async (t) => {
+        const { root } = await fixture(t);
+        await put(root, rel, content + " ".repeat(METADATA_LIMIT - Buffer.byteLength(content)));
+        const room = await readRoom(root);
+        if (key === "manifest") assert.equal(room.name, "Linked fixture");
+        else if (key === "inventory") assert.equal(room.sources[0]["Source ID"], "S001");
+        else if (key === "chat") assert.equal(room.teams.conversations.length, 1);
+        else assert.equal(Buffer.byteLength(room.logs[key].text), METADATA_LIMIT);
+    });
+
+    test(`metadata limit rejects rather than truncates an oversized ${key}`, async (t) => {
+        const { root } = await fixture(t);
+        await put(root, rel, content + " ".repeat(METADATA_LIMIT + 1 - Buffer.byteLength(content)));
+        await assert.rejects(readRoom(root), (error) => {
+            assert.match(error.message, /metadata.*limit/i);
+            assert.ok(error.message.includes(rel), "The error must identify the oversized maintenance file");
+            return true;
+        });
+    });
+}
+
+test("metadata limit rejects a sparse multi-GiB manifest under a constrained heap", async (t) => {
+    const { root } = await fixture(t);
+    const handle = await open(path.join(root, "room.yaml"), "r+");
+    try {
+        await handle.truncate(3 * 1024 * 1024 * 1024 + 1);
+    } finally {
+        await handle.close();
+    }
+    assert.ok((await stat(path.join(root, "room.yaml"))).blocks * 512 < METADATA_LIMIT);
+    const { stdout } = await exec(process.execPath, [
+        "--max-old-space-size=48", "--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import { readRoom } from ${JSON.stringify(moduleUrl)};
+            const before = process.memoryUsage().arrayBuffers;
+            await assert.rejects(readRoom(process.argv[1]), /metadata.*limit/i);
+            assert.ok(process.memoryUsage().arrayBuffers - before < 8 * 1024 * 1024);
+            console.log("bounded metadata rejection");
+        `, root,
+    ], { timeout: 30000 });
+    assert.equal(stdout.trim(), "bounded metadata rejection");
+});
+
+test("metadata reads close handles after valid, oversized and non-file inputs", async (t) => {
+    if (process.platform === "win32") {
+        t.skip("This real descriptor-limit regression requires a POSIX shell");
+        return;
+    }
+    const { root, base } = await fixture(t);
+    const oversized = path.join(base, "oversized");
+    const invalid = path.join(base, "invalid");
+    await put(oversized, "room.yaml", Buffer.alloc(METADATA_LIMIT + 1, 0x20));
+    await mkdir(path.join(invalid, "room.yaml"), { recursive: true });
+    const script = `
+        import assert from "node:assert/strict";
+        import { readRoom } from ${JSON.stringify(moduleUrl)};
+        for (let i = 0; i < 80; i++) {
+            assert.equal((await readRoom(process.argv[1])).name, "Fixture");
+            await assert.rejects(readRoom(process.argv[2]), /metadata.*limit/i);
+            await assert.rejects(readRoom(process.argv[3]), /Not a file/);
+        }
+        console.log("metadata handles closed");
+    `;
+    const { stdout } = await exec("/bin/sh", [
+        "-c", 'ulimit -n 64 && exec "$@"', "metadata-test",
+        process.execPath, "--input-type=module", "-e", script, root, oversized, invalid,
+    ], { timeout: 30000 });
+    assert.equal(stdout.trim(), "metadata handles closed");
+});
 
 for (const [key, filename, content] of [
     ["inventory", "inventory.csv", inventory],
@@ -216,6 +289,94 @@ test("missing custom maintenance files fall back to ordinary in-room defaults", 
     assert.equal(room.sources[0].Lifecycle, "Current");
     assert.deepEqual(room.health.missingOnDisk, []);
     assert.notEqual(room.teams, null);
+});
+
+test("chat fallback reports the effective default index path", async (t) => {
+    const { root } = await fixture(t, "maintenance_links:\n  chat_index: absent/custom.md\n");
+    await put(root, "02_inventory/chat-index.md", chatIndex);
+    const room = await readRoom(root);
+    assert.equal(room.teams.rel, "02_inventory/chat-index.md");
+    assert.equal(room.teams.conversations[0].name, "Fixture chat");
+});
+
+for (const [name, text] of [["empty", ""], ["whitespace", " \n\t"], ["unparseable", "# Not a chat index\n"]]) {
+    test(`an existing ${name} chat index reports an explicit error`, async (t) => {
+        const { root } = await fixture(t);
+        await put(root, "02_inventory/chat-index.md", text);
+        const room = await readRoom(root);
+        assert.equal(typeof room.teams?.error, "string");
+        assert.match(room.teams.error, /chat index/i);
+        assert.equal(room.teams.rel, "02_inventory/chat-index.md");
+    });
+}
+
+test("an existing empty custom chat index is not replaced by a valid default", async (t) => {
+    const { root } = await fixture(t, "maintenance_links:\n  chat_index: maintenance/custom.md\n");
+    await put(root, "maintenance/custom.md", "");
+    await put(root, "02_inventory/chat-index.md", chatIndex);
+    const room = await readRoom(root);
+    assert.equal(typeof room.teams?.error, "string");
+    assert.equal(room.teams.rel, "maintenance/custom.md");
+});
+
+test("unregistered captures require exact distinctive tokens rather than name substrings", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "02_inventory/chat-index.md", "# Chat index\n\n"
+        + "## 1. Alpha chat\n\n**chat_id:** `19:alpha`\n\n"
+        + "## 2. Alphabet chat\n\n**chat_id:** `19:alphabet`\n");
+    await put(root, "00_originals/alpha-transcript.md", "Alpha\n");
+    await put(root, "00_originals/alphabet-transcript.md", "Alphabet\n");
+    await put(root, "02_inventory/source_inventory.csv", "Source ID,Path,Source type,Date\n"
+        + "S001,00_originals/alpha-transcript.md,transcript,2026-09-08\n"
+        + "S002,00_originals/alphabet-transcript.md,transcript,2026-09-08\n");
+    const room = await readRoom(root);
+    assert.deepEqual(room.teams.conversations.map((conversation) => ({
+        name: conversation.name,
+        ids: conversation.unregistered.map((source) => source.id),
+    })), [
+        { name: "Alpha chat", ids: ["S001"] },
+        { name: "Alphabet chat", ids: ["S002"] },
+    ]);
+    assert.equal(room.teams.counts.unregistered, 2);
+});
+
+test("unregistered captures compare full explicit Source IDs without collapsing prefixes or numbers", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "02_inventory/chat-index.md", "# Chat index\n\n"
+        + "## 1. Alpha chat\n\n**chat_id:** `19:alpha`\n\n"
+        + "| Source | File | Captured | Complete |\n|---|---|---|---|\n"
+        + "| S004 | 00_originals/alpha-registered.md | 2026-09-01 | yes |\n");
+    const rows = ["Source ID,Path,Source type,Date"];
+    for (const [id, name] of [
+        ["S004", "registered"], ["MEMO-S004", "memo"], ["OTHER-S004", "other"], ["S4", "short"],
+    ]) {
+        await put(root, `00_originals/alpha-${name}.md`, "Transcript\n");
+        rows.push(`${id},00_originals/alpha-${name}.md,transcript,2026-09-08`);
+    }
+    await put(root, "02_inventory/source_inventory.csv", rows.join("\n"));
+    const room = await readRoom(root);
+    const conversation = room.teams.conversations[0];
+    assert.deepEqual(conversation.sourceIds, ["S004"]);
+    assert.deepEqual(conversation.unregistered.map((source) => source.id), ["MEMO-S004", "OTHER-S004", "S4"]);
+});
+
+for (const sourceDir of ["00_originals", "01_inbox", "06_evidence"]) {
+    test(`source layout recognises an empty top-level ${sourceDir} directory`, async (t) => {
+        const { root } = await fixture(t);
+        await mkdir(path.join(root, sourceDir));
+        const room = await readRoom(root);
+        assert.deepEqual(room.health.recognisedDirs, [sourceDir]);
+        assert.equal(room.health.unrecognisedLayout, false);
+        assert.deepEqual(room.health.uninventoried, []);
+    });
+}
+
+test("source layout does not recognise a file named like a source directory", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "00_originals", "Not a directory\n");
+    const room = await readRoom(root);
+    assert.deepEqual(room.health.recognisedDirs, []);
+    assert.equal(room.health.unrecognisedLayout, true);
 });
 
 test("empty custom inventory does not silently substitute an unrelated default inventory", async (t) => {
@@ -543,4 +704,49 @@ test("preview closes file handles on text, binary, image and error returns", asy
         process.execPath, "--input-type=module", "-e", script, root,
     ], { timeout: 30000 });
     assert.equal(stdout.trim(), "handles closed");
+});
+
+for (const [name, pathImpl, absolutePath, expected] of [
+    ["POSIX root", path.posix, "/", [{ name: "/", path: "/" }]],
+    ["POSIX descendants", path.posix, "/rooms/project/", [
+        { name: "/", path: "/" }, { name: "rooms", path: "/rooms" }, { name: "project", path: "/rooms/project" },
+    ]],
+    ["Windows drive root", path.win32, "C:\\", [{ name: "C:\\", path: "C:\\" }]],
+    ["Windows drive descendants", path.win32, "C:\\rooms\\project\\", [
+        { name: "C:\\", path: "C:\\" }, { name: "rooms", path: "C:\\rooms" },
+        { name: "project", path: "C:\\rooms\\project" },
+    ]],
+    ["UNC share root", path.win32, "\\\\server\\share", [
+        { name: "\\\\server\\share\\", path: "\\\\server\\share\\" },
+    ]],
+    ["UNC descendants", path.win32, "\\\\server\\share\\rooms\\project", [
+        { name: "\\\\server\\share\\", path: "\\\\server\\share\\" },
+        { name: "rooms", path: "\\\\server\\share\\rooms" },
+        { name: "project", path: "\\\\server\\share\\rooms\\project" },
+    ]],
+]) {
+    test(`path breadcrumbs preserve the ${name} boundary`, () => {
+        assert.equal(typeof roomModule.pathBreadcrumbs, "function");
+        assert.deepEqual(roomModule.pathBreadcrumbs(absolutePath, pathImpl), expected);
+    });
+}
+
+test("path breadcrumbs reject relative inputs rather than deriving targets from process cwd", () => {
+    assert.equal(typeof roomModule.pathBreadcrumbs, "function");
+    assert.throws(() => roomModule.pathBreadcrumbs("rooms/project", path.posix), /absolute path/i);
+    assert.throws(() => roomModule.pathBreadcrumbs("C:rooms", path.win32), /absolute path/i);
+});
+
+test("browseDir provides native root-to-target breadcrumbs for a real fixture directory", async (t) => {
+    const { root, base } = await fixture(t);
+    const result = await browseDir(root);
+    assert.ok(Array.isArray(result.breadcrumbs));
+    const filesystemRoot = path.parse(root).root;
+    assert.deepEqual(result.breadcrumbs[0], { name: filesystemRoot, path: filesystemRoot });
+    assert.deepEqual(result.breadcrumbs.slice(-2), [
+        { name: path.basename(base), path: base }, { name: "room", path: root },
+    ]);
+    assert.equal(result.path, root);
+    assert.equal(result.parent, base);
+    assert.equal(result.isRoom, true);
 });

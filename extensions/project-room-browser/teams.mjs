@@ -85,6 +85,12 @@ function classifyTable(t) {
     return "other";
 }
 
+/** Source IDs are inventory keys: preserve prefixes, case, and leading zeros. */
+function sourceIdsIn(text) {
+    return [...stripMd(text).matchAll(/(?<![\p{L}\p{N}_.-])(?:[\p{L}\p{N}_][\p{L}\p{N}_.-]*-)?S\d+(?![\p{L}\p{N}_-])/gu)]
+        .map((match) => match[0]);
+}
+
 function parseCaptureRow(header, row) {
     const idx = (name) => header.findIndex((h) => h.toLowerCase() === name);
     const at = (name) => {
@@ -93,13 +99,14 @@ function parseCaptureRow(header, row) {
     };
     const complete = at("complete");
     // A Source cell may carry a status annotation, e.g. "S074 \u2190 use this" or
-    // "S038 \u26a0\ufe0f superseded". The bare id is the identity; the annotation is
-    // status and must not contaminate the id used in prompts and lookups.
+    // "MEMO-S038 \u26a0\ufe0f superseded". The full id is the identity; only
+    // the annotation is status.
     const srcCell = stripMd(at("source"));
-    const bareId = (srcCell.match(/S\d+/) || [])[0] || srcCell;
-    const annotation = srcCell.replace(/S\d+/, "").trim();
+    const ids = sourceIdsIn(srcCell);
+    const sourceId = ids[0] || srcCell;
+    const annotation = ids.length ? srcCell.replace(sourceId, "").trim() : srcCell;
     return {
-        sourceId: bareId,
+        sourceId,
         sourceNote: annotation || null,
         isCurrent: /use this|current/i.test(annotation),
         isSuperseded: /supersed|stale|old/i.test(annotation),
@@ -117,11 +124,11 @@ function parseOccurrenceRow(header, row) {
     for (let i = 1; i < header.length; i++) {
         const label = stripMd(header[i]);
         const raw = row[i] || "";
-        const present = !/❌|—|^\s*$/.test(raw.trim()) || /`S\d+`/.test(raw);
+        const sourceIds = sourceIdsIn(raw);
         out.artifacts.push({
             label,
-            present: /`S\d+`/.test(raw) ? true : present ? true : false,
-            sourceIds: [...raw.matchAll(/`(S\d+)`/g)].map((m) => m[1]),
+            present: sourceIds.length > 0 || !/❌|—|^\s*$/.test(raw.trim()),
+            sourceIds,
             note: stripMd(raw),
         });
     }
@@ -181,7 +188,7 @@ export function parseChatIndex(text) {
                         chatIdShort: stripMd(get("chat_id")),
                         name: stripMd(get("conversation")),
                         type: stripMd(get("type")),
-                        sourceIds: [...(get("sources") || "").matchAll(/`?(S\d+)`?/g)].map((m) => m[1]),
+                        sourceIds: sourceIdsIn(get("sources")),
                         fullyCaptured: tri(get("captured")),
                         capturedNote: stripMd(get("captured")),
                     };
@@ -245,6 +252,9 @@ export function parseChatIndex(text) {
         } else if (q.chatIdShort && !byId && (byOrdinal || nameMatches.length)) {
             reason = "unmatched-chat-id";
             candidates = byOrdinal ? [byOrdinal] : nameMatches;
+        } else if (!q.chatIdShort && byOrdinal && nameMatches.length === 1 && nameMatches[0] !== byOrdinal) {
+            reason = "ordinal-name-disagreement";
+            candidates = [byOrdinal, nameMatches[0]];
         } else if (!q.chatIdShort && !byOrdinal && nameMatches.length > 1) {
             reason = "ambiguous-name";
             candidates = nameMatches;
@@ -273,7 +283,8 @@ export function parseChatIndex(text) {
             if (!match.captures.length && q.sourceIds.length) match.quickSourceIds = q.sourceIds;
         } else {
             conversations.push({
-                index: conversations.length + 1,
+                index: q.ordinal != null && !byOrdinal ? q.ordinal :
+                    conversations.reduce((max, c) => Math.max(max, c.index), 0) + 1,
                 name: q.name,
                 chatId: q.chatIdShort && !q.chatIdShort.includes("\u2026") ? q.chatIdShort : null,
                 chatIdShort: q.chatIdShort || null,
@@ -357,18 +368,22 @@ function inferType(c) {
     return "Chat";
 }
 
-function isFutureDate(s) {
-    const m = String(s || "").match(/\d{4}-\d{2}-\d{2}/);
-    if (!m) return false;
-    const t = Date.parse(m[0] + "T00:00:00Z");
-    return !Number.isNaN(t) && t > Date.now();
+function isoDateTime(iso) {
+    if (typeof iso !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+    const t = Date.parse(iso + "T00:00:00Z");
+    return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === iso ? t : null;
+}
+
+function isFutureDate(s, now) {
+    const m = String(s || "").match(/\b\d{4}-\d{2}-\d{2}\b/);
+    const t = isoDateTime(m?.[0]);
+    return t != null && t > now;
 }
 
 const DAY = 86400000;
 function daysSince(iso, now) {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-    const t = Date.parse(iso + "T00:00:00Z");
-    return Number.isNaN(t) ? null : Math.floor(((now ?? Date.now()) - t) / DAY);
+    const t = isoDateTime(iso);
+    return t == null ? null : Math.floor(((now ?? Date.now()) - t) / DAY);
 }
 
 /**
@@ -393,7 +408,7 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         return null;
     };
     const conversations = index.conversations.map((c) => {
-        const dates = c.captures.map((x) => x.captured).filter(Boolean).sort();
+        const dates = c.captures.map((x) => x.captured).filter((date) => isoDateTime(date) != null).sort();
         const last = dates.length ? dates[dates.length - 1] : null;
         const age = daysSince(last, now);
         // A capture that was superseded by a later, complete capture is history,
@@ -412,7 +427,7 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
                 // "none exists" records that the artifact was never produced, and an
                 // upcoming occurrence has not happened yet. Neither is actionable.
                 const impossible = /none exists|n\/a|not available|no recording/i.test(a.note || "");
-                const upcoming = /upcoming|scheduled|future/i.test(occ.date + " " + (a.note || "")) || isFutureDate(occ.date);
+                const upcoming = /upcoming|scheduled|future/i.test(occ.date + " " + (a.note || "")) || isFutureDate(occ.date, now);
                 if (!a.present && !impossible && !upcoming) {
                     missingArtifacts.push({ date: occ.date, label: a.label, note: a.note });
                 }
@@ -431,6 +446,7 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
             daysSinceCapture: age,
             authoredIncomplete,
             unknownCompleteness: effectiveCaptures.some((x) => x.complete == null),
+            unknownCaptureDate: effectiveCaptures.some((x) => isoDateTime(x.captured) == null),
             cadenceDays: cadence,
             staleWindowDays: window,
             // >= not >: the room's own gap list calls a 14-day-old capture stale.
@@ -467,7 +483,7 @@ export function refreshTeamsHealth(health) {
         );
         c.needsReconciliation = !!(
             c.staleDateDisputed || (c.unregistered || []).length ||
-            (c.identityConflicts || []).length || c.indexDetailGap || c.unknownCompleteness
+            (c.identityConflicts || []).length || c.indexDetailGap || c.unknownCompleteness || c.unknownCaptureDate
         );
         c.hasProblem = c.needsRecapture || c.needsReconciliation;
     }
@@ -484,6 +500,7 @@ export function refreshTeamsHealth(health) {
         unregistered: conversations.reduce((n, c) => n + (c.unregistered || []).length, 0),
         indexDetailGap: count("indexDetailGap"),
         unknownCompleteness: count("unknownCompleteness"),
+        unknownCaptureDate: count("unknownCaptureDate"),
         identityConflicts: (health.identityConflicts || []).length,
         needsRecapture: count("needsRecapture"),
         needsReconciliation: count("needsReconciliation"),

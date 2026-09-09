@@ -472,3 +472,249 @@ test("shared prompt helpers preserve nullable data while enforcing explicit stri
     assert.equal(data.long.length, 1200);
     assert.throws(() => untrustedBlock(undefined), TypeError);
 });
+
+test("capture tables preserve verbatim Source IDs separately from status annotations", () => {
+    const ids = ["S004", "MEMO-S004", "Old-OPS_2-S004", "Zone.East-S0004"];
+    const health = healthFor(ids.map((id) =>
+        `| \`${id}\` current | page.json | 2026-09-08 | first page | partial |`
+    ));
+    const [c] = health.conversations;
+    assert.deepEqual(c.captures.map((x) => x.sourceId), ids);
+    assert.ok(c.captures.every((x) => x.sourceNote === "current" && x.isCurrent && !x.isSuperseded));
+    assert.deepEqual(c.sourceIds, ids);
+    const { data } = sweepData(teams.sweepPlan(health).text);
+    assert.deepEqual(data.targets[0].sourceIds.items, ids);
+    assert.deepEqual(data.targets[0].reasons.incompleteCaptures.items.map((x) => x.sourceId), ids);
+});
+
+test("superseded prefixed Source IDs do not suppress another source with the same numeric suffix", () => {
+    const health = healthFor([
+        "| OTHER-S004 superseded | old.json | 2026-09-01 | first page | partial |",
+        "| MEMO-S004 current | new.json | 2026-09-08 | first page | partial |",
+    ]);
+    assert.deepEqual(health.conversations[0].incompleteCaptures.map((x) => x.sourceId), ["MEMO-S004"]);
+    assert.equal(teams.sweepPlan(health).targets.length, 1);
+});
+
+test("occurrence tables preserve verbatim Source IDs and recognize referenced artifacts", () => {
+    const health = healthFor([], {
+        extra: [
+            "| Date | Verbatim transcript | Recap |",
+            "| --- | --- | --- |",
+            "| 2026-09-07 | `MEMO-S004`, Old-OPS_2-S021, S005 \u2014 archived | |",
+        ].join("\n"),
+    });
+    const [c] = health.conversations;
+    const [transcript, recap] = c.occurrences[0].artifacts;
+    assert.deepEqual(transcript.sourceIds, ["MEMO-S004", "Old-OPS_2-S021", "S005"]);
+    assert.equal(transcript.present, true);
+    assert.equal(recap.present, false);
+    assert.deepEqual(c.missingArtifacts.map((x) => x.label), ["Recap"]);
+    const { data } = sweepData(teams.sweepPlan(health).text);
+    assert.deepEqual(data.targets[0].reasons.missingArtifacts.items.map((x) => x.label), ["Recap"]);
+});
+
+test("quick maps preserve verbatim Source IDs through health and sweep data", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        quickRows: [`| 1 | Alpha thread | \`${alphaId}\` | Group | \`MEMO-S004\`, Old-OPS_2-S021, S005 | partial |`],
+    }));
+    const ids = ["MEMO-S004", "Old-OPS_2-S021", "S005"];
+    assert.deepEqual(parsed.quickMap[0].sourceIds, ids);
+    assert.deepEqual(parsed.conversations[0].quickSourceIds, ids);
+    const health = teams.teamsHealth(parsed, { now });
+    assert.deepEqual(health.conversations[0].sourceIds, ids);
+    assert.deepEqual(sweepData(teams.sweepPlan(health).text).data.targets[0].sourceIds.items, ids);
+});
+
+test("a unique name disagreeing with an ordinal cannot attach quick-map facts without a chat ID", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        quickRows: ["| 1 | Beta thread | | Meeting | MEMO-S999 | partial |"],
+        details: [
+            detail(1, "Alpha thread", alphaId, ["| S001 | one.json | 2026-09-08 | full | complete |"]),
+            detail(3, "Beta thread", betaId, ["| S003 | three.json | 2026-09-08 | full | complete |"]),
+        ],
+    }));
+    assert.ok(parsed.conversations.every((c) =>
+        c.fullyCaptured === undefined && c.capturedNote === undefined &&
+        c.quickSourceIds === undefined && c.type === "Chat"
+    ));
+    assert.equal(parsed.identityConflicts.length, 1);
+    const [conflict] = parsed.identityConflicts;
+    assert.equal(conflict.reason, "ordinal-name-disagreement");
+    assert.deepEqual(conflict.candidates.map((c) => c.index), [1, 3]);
+    assert.deepEqual(conflict.candidates.map((c) => c.chatId), [alphaId, betaId]);
+    const health = teams.teamsHealth(parsed, { now });
+    for (const c of health.conversations) {
+        assert.deepEqual(c.identityConflicts, [conflict]);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.needsRecapture, false);
+    }
+    assert.deepEqual(health.identityConflicts, [conflict]);
+    assert.deepEqual(teams.sweepPlan(health).targets, []);
+});
+
+for (const { ordinal, expected } of [
+    { ordinal: "2", expected: 2 },
+    { ordinal: "", expected: 4 },
+]) {
+    test(`sparse section ordinals keep unique action indexes for quick-map ordinal ${ordinal || "unspecified"}`, () => {
+        const parsed = teams.parseChatIndex(chatIndex({
+            quickRows: [
+                `| ${ordinal} | Gamma launch | \`19:gamma@thread.v2\` | Group | S002 | partial |`,
+                "| | Delta review | `19:delta@thread.v2` | Group | S005 | partial |",
+            ],
+            details: [detail(1, "Alpha thread", alphaId), detail(3, "Beta thread", betaId)],
+        }));
+        const health = teams.teamsHealth(parsed, { now });
+        const indexes = health.conversations.map((c) => c.index);
+        assert.deepEqual(indexes, [1, 3, expected, expected === 2 ? 4 : 5]);
+        const plan = teams.sweepPlan(health);
+        assert.equal(plan.targets.length, 4);
+        assert.equal(new Set(plan.targets.map((c) => c.index)).size, 4);
+        const { data } = sweepData(plan.text);
+        for (const target of data.targets) {
+            const matches = health.conversations.filter((c) => c.index === target.index);
+            assert.equal(matches.length, 1);
+            assert.equal(matches[0].chatId, target.chatId);
+        }
+    });
+}
+
+for (const captured of ["2026-02-30", "2026-02-29", "2026-04-31"]) {
+    test(`invalid ISO calendar dates do not yield a capture age or stale sweep: ${captured}`, () => {
+        const health = healthFor([`| S001 current | full.json | ${captured} | full | complete |`]);
+        const [c] = health.conversations;
+        assert.equal(c.captures[0].captured, captured);
+        assert.equal(c.lastCaptured, null);
+        assert.equal(c.daysSinceCapture, null);
+        assert.equal(c.isStale, false);
+        assert.equal(c.unknownCaptureDate, true);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.hasProblem, true);
+        assert.equal(health.counts.unknownCaptureDate, 1);
+        assert.equal(health.counts.needsReconciliation, 1);
+        assert.equal(health.counts.stale, 0);
+        assert.deepEqual(teams.sweepPlan(health).targets, []);
+    });
+}
+
+test("invalid later capture dates do not hide the latest valid date", () => {
+    const health = healthFor([
+        "| S001 | old.json | 2026-08-01 | full | complete |",
+        "| S002 current | invalid.json | 2026-09-31 | full | complete |",
+    ]);
+    const [c] = health.conversations;
+    assert.equal(c.lastCaptured, "2026-08-01");
+    assert.equal(c.daysSinceCapture, 38);
+    assert.equal(c.isStale, true);
+    assert.equal(c.unknownCaptureDate, true);
+    assert.equal(c.needsReconciliation, true);
+    assert.deepEqual(sweepData(teams.sweepPlan(health).text).data.targets[0].reasons.stale,
+        { lastCaptured: "2026-08-01", daysSinceCapture: 38 });
+});
+
+test("strict ISO date validation accepts real leap days and preserves independent partial evidence", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        details: [
+            detail(1, "Alpha thread", alphaId, ["| S001 | leap.json | 2024-02-29 | full | complete |"]),
+            detail(2, "Beta thread", betaId, ["| S002 | partial.json | 2026-02-30 | page | partial |"]),
+        ],
+    }));
+    const health = teams.teamsHealth(parsed, { now: Date.parse("2024-03-01T12:00:00Z") });
+    assert.equal(health.conversations[0].daysSinceCapture, 1);
+    assert.equal(health.conversations[1].daysSinceCapture, null);
+    assert.equal(health.conversations[0].unknownCaptureDate, false);
+    assert.equal(health.conversations[1].unknownCaptureDate, true);
+    const plan = teams.sweepPlan(health);
+    assert.deepEqual(plan.targets.map((c) => c.index), [2]);
+    const { data } = sweepData(plan.text);
+    assert.equal(data.targets[0].reasons.stale, null);
+    assert.equal(data.targets[0].reasons.incompleteCaptures.items[0].sourceId, "S002");
+});
+
+for (const { date, asOf, missing } of [
+    { date: "2099-02-30", asOf: "2026-02-28", missing: true },
+    { date: "2099-02-28", asOf: "2026-02-28", missing: false },
+    { date: "2026-03-01", asOf: "2026-02-28", missing: false },
+    { date: "2026-02-28", asOf: "2026-03-01", missing: true },
+]) {
+    test(`future occurrence checks use valid ISO dates and the health clock: ${date} at ${asOf}`, () => {
+        const parsed = teams.parseChatIndex(chatIndex({
+            details: [detail(1, "Alpha thread", alphaId,
+                [`| S001 current | full.json | ${asOf} | full | complete |`],
+                [
+                    "| Date | Verbatim transcript |",
+                    "| --- | --- |",
+                    `| ${date} | |`,
+                ].join("\n"))],
+        }));
+        const health = teams.teamsHealth(parsed, { now: Date.parse(asOf + "T12:00:00Z") });
+        assert.equal(health.conversations[0].missingArtifacts.length, missing ? 1 : 0);
+        assert.equal(teams.sweepPlan(health).targets.length, missing ? 1 : 0);
+    });
+}
+
+test("a missing current capture date remains a reconciliation problem after inventory enrichment", () => {
+    const health = healthFor(["| S001 current | full.json | | full | complete |"]);
+    const [c] = health.conversations;
+    assert.equal(c.unknownCaptureDate, true);
+    assert.equal(c.daysSinceCapture, null);
+    assert.equal(c.isStale, false);
+    assert.equal(c.needsRecapture, false);
+    assert.equal(c.needsReconciliation, true);
+    assert.equal(c.hasProblem, true);
+    assert.equal(health.counts.unknownCaptureDate, 1);
+    assert.equal(health.counts.hasProblem, 1);
+    c.unregistered = [{ id: "S002", path: "new.json", date: "2026-09-08" }];
+    c.staleDateDisputed = true;
+    teams.refreshTeamsHealth(health);
+    assert.equal(c.unknownCaptureDate, true);
+    assert.equal(c.needsReconciliation, true);
+    assert.equal(health.counts.unknownCaptureDate, 1);
+    assert.equal(health.counts.needsReconciliation, 1);
+    assert.deepEqual(teams.sweepPlan(health).targets, []);
+});
+
+for (const annotation of ["superseded", ""]) {
+    test(`unknown dates in ineffective historical captures do not require reconciliation (${annotation || "replaced"})`, () => {
+        const health = healthFor([
+            `| S001 ${annotation} | old.json | 2026-02-30 | page | partial |`,
+            "| S002 current | full.json | 2026-09-08 | full | complete |",
+        ]);
+        const [c] = health.conversations;
+        assert.equal(c.unknownCaptureDate, false);
+        assert.equal(c.needsReconciliation, false);
+        assert.equal(c.hasProblem, false);
+        assert.equal(health.counts.unknownCaptureDate, 0);
+        assert.equal(health.counts.needsReconciliation, 0);
+        assert.deepEqual(teams.sweepPlan(health).targets, []);
+    });
+}
+
+for (const evidence of ["partial", "artifact"]) {
+    test(`an unknown capture date preserves independent ${evidence} re-capture evidence`, () => {
+        const health = healthFor([
+            `| S001 current | capture.json | ${evidence === "partial" ? "2026-02-30" : ""} | page | ${evidence === "partial" ? "partial" : "complete"} |`,
+        ], {
+            extra: evidence === "artifact" ? [
+                "| Date | Verbatim transcript |",
+                "| --- | --- |",
+                "| 2026-09-07 | |",
+            ].join("\n") : "",
+        });
+        const [c] = health.conversations;
+        assert.equal(c.unknownCaptureDate, true);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.needsRecapture, true);
+        assert.equal(c.hasProblem, true);
+        assert.equal(health.counts.unknownCaptureDate, 1);
+        assert.equal(health.counts.needsReconciliation, 1);
+        assert.equal(health.counts.needsRecapture, 1);
+        const plan = teams.sweepPlan(health);
+        assert.deepEqual(plan.targets, [c]);
+        const { data } = sweepData(plan.text);
+        assert.equal(data.targets[0].reasons.stale, null);
+        assert.equal(data.targets[0].reasons.incompleteCaptures.total, evidence === "partial" ? 1 : 0);
+        assert.equal(data.targets[0].reasons.missingArtifacts.total, evidence === "artifact" ? 1 : 0);
+    });
+}

@@ -2,7 +2,7 @@
 // No dependencies: hand-rolled CSV and a minimal YAML subset reader, because
 // the room format is stable and small enough not to warrant a parser package.
 
-import { readFile, readdir, stat, realpath, lstat, open } from "node:fs/promises";
+import { readdir, stat, realpath, lstat, open } from "node:fs/promises";
 import path from "node:path";
 import { parseChatIndex, teamsHealth, refreshTeamsHealth } from "./teams.mjs";
 
@@ -263,11 +263,23 @@ async function walk(dir, root, acc = []) {
     return acc;
 }
 
+const MAX_METADATA = 2 * 1024 * 1024;
+
 async function readIfPresent(root, rel) {
     try {
         const target = await assertInsideReal(root, resolveInside(root, rel));
-        if (!(await stat(target)).isFile()) throw new Error("Not a file: " + rel);
-        return await readFile(target, "utf8");
+        const handle = await open(target, "r");
+        try {
+            const s = await handle.stat();
+            if (!s.isFile()) throw new Error("Not a file: " + rel);
+            const sizeError = "Refused: metadata exceeds the 2 MiB limit: " + rel;
+            if (s.size > MAX_METADATA) throw new Error(sizeError);
+            const buf = await readPrefix(handle, MAX_METADATA + 1);
+            if (buf.length > MAX_METADATA) throw new Error(sizeError);
+            return buf.toString("utf8");
+        } finally {
+            await handle.close();
+        }
     } catch (error) {
         if (error.code === "ENOENT") return null;
         throw error;
@@ -387,7 +399,7 @@ export async function readRoom(roomPath) {
 
     // If none of the expected source folders exist, the uninventoried check
     // covered nothing and a clean result would be meaningless.
-    const topLevel = new Set(files.filter((f) => f.rel.includes(path.sep)).map((f) => f.rel.split(path.sep)[0]));
+    const topLevel = new Set(files.filter((f) => f.dir && !f.rel.includes(path.sep)).map((f) => f.rel));
     const recognisedDirs = [...SOURCE_DIRS].filter((d) => topLevel.has(d));
     const unrecognisedLayout = recognisedDirs.length === 0 && files.length > 0;
 
@@ -465,9 +477,12 @@ export async function readRoom(roomPath) {
     // Teams conversations are a first-class source class, indexed separately
     // from the file inventory: the inventory lists FILES, the chat index lists
     // CONVERSATIONS (a thread can span many captures, or none yet).
-    const chatRel = room.maintenance_links?.chat_index || "02_inventory/chat-index.md";
+    let chatRel = room.maintenance_links?.chat_index || "02_inventory/chat-index.md";
     let chatText = await readIfPresent(root, chatRel);
-    if (chatText == null) chatText = await readIfPresent(root, "02_inventory/chat-index.md");
+    if (chatText == null) {
+        chatRel = "02_inventory/chat-index.md";
+        chatText = await readIfPresent(root, chatRel);
+    }
     let teams = null;
 
     /* The chat index and the file inventory are maintained separately, so the
@@ -488,7 +503,7 @@ export async function readRoom(roomPath) {
         for (const c of convs) for (const w of new Set(tokenise(c.name))) counts.set(w, (counts.get(w) || 0) + 1);
 
         const registered = new Set();
-        for (const c of convs) for (const s of c.sourceIds || []) registered.add(String(s).replace(/^\D+/, ""));
+        for (const c of convs) for (const s of c.sourceIds || []) registered.add(String(s));
 
         const out = new Map();
         for (const c of convs) {
@@ -496,11 +511,11 @@ export async function readRoom(roomPath) {
             if (!distinctive.length) continue;
             for (const s of sources) {
                 const id = String(s["Source ID"] || "");
-                const num = (id.match(/S(\d+)/) || [])[1];
-                if (!num || registered.has(String(Number(num))) || registered.has(num)) continue;
+                if (!id || registered.has(id)) continue;
                 const blob = ((s.Path || "") + " " + (s["Source type"] || "")).toLowerCase();
                 if (!CONVERSATION_ARTIFACT.test(blob)) continue;
-                if (!distinctive.some((w) => blob.includes(w))) continue;
+                const tokens = new Set(tokenise(blob));
+                if (!distinctive.some((w) => tokens.has(w))) continue;
                 // Only newer material changes the staleness picture.
                 if (c.lastCaptured && !(String(s.Date || "") > c.lastCaptured)) continue;
                 if (!out.has(c.index)) out.set(c.index, []);
@@ -511,7 +526,8 @@ export async function readRoom(roomPath) {
     }
 
     try {
-        const idx = chatText ? parseChatIndex(chatText) : null;
+        const idx = chatText != null ? parseChatIndex(chatText) : null;
+        if (chatText != null && !idx) throw new Error("Invalid chat index: no parseable conversations");
         if (idx) {
             teams = { rel: chatRel, ...teamsHealth(idx) };
             const extra = unregisteredCaptures(teams.conversations);
@@ -758,6 +774,20 @@ async function isRoom(dir) {
     }
 }
 
+/** Breadcrumb targets derived from native path roots, including UNC shares. */
+export function pathBreadcrumbs(absolutePath, pathImpl = path) {
+    if (!pathImpl.isAbsolute(absolutePath)) throw new Error("Expected an absolute path");
+    let current = pathImpl.format(pathImpl.parse(pathImpl.normalize(absolutePath)));
+    const breadcrumbs = [];
+    for (;;) {
+        const parsed = pathImpl.parse(current);
+        breadcrumbs.push({ name: parsed.base || parsed.root, path: current });
+        const parent = pathImpl.dirname(current);
+        if (parent === current) return breadcrumbs.reverse();
+        current = parent;
+    }
+}
+
 /**
  * List sub-directories of `dir` for the picker's file browser. Directories
  * only: this never exposes file contents, and reading a room still goes
@@ -780,6 +810,7 @@ export async function browseDir(dir) {
     return {
         path: resolved,
         parent: parent === resolved ? null : parent,
+        breadcrumbs: pathBreadcrumbs(resolved),
         isRoom: await isRoom(resolved),
         entries,
     };

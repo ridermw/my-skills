@@ -9,7 +9,7 @@ let browser;
 before(async () => { browser = await chromium.launch({ headless: true }); });
 after(async () => { if (browser) await browser.close(); });
 
-async function openPage(t, root, width = 1100) {
+async function openPage(t, root, width = 1100, beforeLoad) {
     const server = await serveRoom(t, root);
     const context = await browser.newContext({ viewport: { width, height: 800 } });
     t.after(() => context.close());
@@ -17,10 +17,83 @@ async function openPage(t, root, width = 1100) {
     page.setDefaultTimeout(5000);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    if (beforeLoad) await beforeLoad(page);
     await page.goto(server.url);
     await page.locator(".rail").waitFor();
     return { ...server, page, errors };
 }
+
+test("Windows relative paths retain folder groups and binary basenames", async (t) => {
+    const root = await makeRoom(t);
+    await writeFile(path.join(root, "00_originals/opaque.bin"), Buffer.from([0, 1, 2]));
+    const { page } = await openPage(t, root, 1100, async (page) => {
+        await page.route("**/api/room", async (route) => {
+            const response = await route.fetch();
+            const data = await response.json();
+            data.room.files = data.room.files.map((file) => ({ ...file, rel: file.rel.replaceAll("/", "\\") }));
+            await route.fulfill({ json: data });
+        });
+        await page.route("**/api/file?rel=*", async (route) => {
+            // Translate the simulated Windows request to this test host's fixture.
+            const url = new URL(route.request().url());
+            url.searchParams.set("rel", url.searchParams.get("rel").replaceAll("\\", "/"));
+            await route.fulfill({ response: await route.fetch({ url: url.href }) });
+        });
+    });
+    await page.locator('[data-v="files"]').click();
+    assert.ok((await page.locator(".tree .grp span:first-child").allTextContents()).includes("00_originals"));
+    await page.getByRole("option", { name: /opaque\.bin/ }).click();
+    await page.locator(".binmsg").waitFor();
+    assert.equal(await page.locator(".binmsg strong").textContent(), "opaque.bin");
+});
+
+for (const breadcrumbs of [
+    [
+        { name: "C:\\", path: "C:\\" },
+        { name: "Users", path: "C:\\Users" },
+        { name: "example", path: "C:\\Users\\example" },
+    ],
+    [
+        { name: "\\\\server\\share\\", path: "\\\\server\\share\\" },
+        { name: "rooms", path: "\\\\server\\share\\rooms" },
+        { name: "example", path: "\\\\server\\share\\rooms\\example" },
+    ],
+]) {
+    test(`picker preserves native breadcrumb targets rooted at ${breadcrumbs[0].path}`, async (t) => {
+        const root = await makeRoom(t);
+        const { page } = await openPage(t, root);
+        await page.route("**/api/browse*", (route) => route.fulfill({
+            json: {
+                ok: true,
+                browse: { path: breadcrumbs.at(-1).path, parent: breadcrumbs.at(-2).path, isRoom: false, entries: [], breadcrumbs },
+            },
+        }));
+        await page.locator(".switch").click();
+        await page.locator(".crumbs").waitFor();
+        assert.deepEqual(await page.locator(".crumbs button").evaluateAll((nodes) => nodes.map((node) => node.dataset.go)),
+            breadcrumbs.map((entry) => entry.path));
+        const request = page.waitForRequest((request) => new URL(request.url()).searchParams.has("dir"));
+        await page.locator(".crumbs button").nth(1).click();
+        assert.equal(new URL((await request).url()).searchParams.get("dir"), breadcrumbs[1].path);
+    });
+}
+
+test("picker renders and follows breadcrumbs from the real HTTP browse handler", async (t) => {
+    const root = await makeRoom(t);
+    const { page, origin } = await openPage(t, root);
+    await page.route("**/api/browse", async (route) => {
+        await route.fulfill({
+            response: await route.fetch({ url: `${origin}/api/browse?dir=${encodeURIComponent(root)}` }),
+        });
+    });
+    await page.locator(".switch").click();
+    await page.locator(".crumbs").waitFor();
+    assert.equal(await page.locator(".crumbs button").last().getAttribute("data-go"), root);
+    const request = page.waitForRequest((request) => new URL(request.url()).searchParams.has("dir"));
+    await page.locator(".crumbs button").last().click();
+    assert.equal(new URL((await request).url()).searchParams.get("dir"), root);
+    await page.getByRole("button", { name: /Open this folder as a room/ }).waitFor();
+});
 
 test("authenticated canvas loads all five views without browser errors", async (t) => {
     const root = await makeRoom(t);
@@ -256,4 +329,50 @@ test("quick-map-only sources are a reconciliation gap rather than an invented mi
     assert.doesNotMatch(text, /No capture is recorded|never recorded|index reports fully captured/);
     assert.match(text, /reconcil/i);
     assert.equal(await page.locator('[data-act="recapture"]').count(), 0);
+});
+
+test("prefixed conversation source chips select only the exact inventory identifier", async (t) => {
+    const root = await makeRoom(t, 2);
+    await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+        "Source ID,Path,Authority,Current or superseded",
+        "MEMO-S001,00_originals/source-1.txt,authoritative,current",
+        "OTHER-S001,00_originals/source-2.txt,authoritative,current",
+        "",
+    ].join("\n"));
+    await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+        "# Chat index",
+        "## 1. Alpha",
+        "**chat_id:** `19:alpha@thread.v2`",
+        "| Source | Captured | Complete |",
+        "| --- | --- | --- |",
+        "| `MEMO-S001` | 1999-01-01 | yes |",
+        "",
+    ].join("\n"));
+    const { page } = await openPage(t, root);
+    await page.locator('[data-v="teams"]').click();
+    const chip = page.locator(".conv .chip.src");
+    assert.equal(await chip.textContent(), "MEMO-S001");
+    await chip.click();
+    await page.locator("#p-inventory").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#q").inputValue(), "MEMO-S001");
+    assert.deepEqual(await page.locator("#list .row").evaluateAll((nodes) => nodes.map((node) => node.dataset.id)), ["MEMO-S001"]);
+});
+
+test("an invalid capture date is visibly unverified rather than a confident age", async (t) => {
+    const root = await makeRoom(t);
+    await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+        "# Chat index",
+        "## 1. Alpha",
+        "**chat_id:** `19:alpha@thread.v2`",
+        "| Source | Captured | Complete |",
+        "| --- | --- | --- |",
+        "| S001 | 2026-02-30 | yes |",
+        "",
+    ].join("\n"));
+    const { page } = await openPage(t, root);
+    await page.locator('[data-v="teams"]').click();
+    assert.match(await page.locator(".convwhen").textContent(), /date unverified/i);
+    assert.doesNotMatch(await page.locator(".convwhen").textContent(), /days? ago/);
+    assert.equal(await page.locator('.conv [data-act="reconcile"]').count(), 1);
+    assert.equal(await page.locator('.conv [data-act="recapture"]').count(), 0);
 });

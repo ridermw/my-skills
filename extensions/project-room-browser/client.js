@@ -17,6 +17,10 @@ const api = (path, opts) => {
 /* <img> cannot set a header, so raw bytes carry the token as a query parameter. */
 const rawUrl = (rel) => "/api/raw?rel=" + encodeURIComponent(rel) + "&t=" + encodeURIComponent(PREVIEW_TOKEN);
 
+function pathParts(value) {
+    return value.split(/[\\/]/).filter(Boolean);
+}
+
 let DATA = null;
 let VIEW = "overview";
 let SEL = null;
@@ -795,7 +799,7 @@ function renderReview() {
           .map(
               (k) => `<button class="f doc" data-k="${h(k)}" aria-current="${k === active}" title="${h(d.logs[k].rel)}">
           <span class="nm">${h(k.replace(/_/g, " "))}</span>
-          <span class="sz">${h(d.logs[k].rel.split("/").pop())}</span>
+          <span class="sz">${h(pathParts(d.logs[k].rel).at(-1))}</span>
         </button>`
           )
           .join("")}
@@ -977,8 +981,9 @@ function convLines(c) {
     const L = [];
     L.push("- name: " + q(c.name) + (c.type ? "  type: " + q(c.type) : ""));
     if (c.chatId) L.push("  chat_id: " + q(c.chatId));
-    if (c.lastCaptured) L.push("  last captured: " + c.lastCaptured + " (" + c.daysSinceCapture + " days ago)");
-    else L.push("  last captured: never recorded in the chat index");
+    if (c.lastCaptured) L.push("  last captured: " + q(c.lastCaptured) +
+        (c.daysSinceCapture == null ? " (date unverified)" : " (" + c.daysSinceCapture + " days ago)"));
+    else L.push("  last capture date: unverified");
     for (const x of c.incompleteCaptures || []) L.push("  partial capture: " + q(x.sourceId) + " note: " + q(x.completeNote));
     for (const m of c.missingArtifacts || []) L.push("  missing artifact: " + q(m.label) + " for " + q(m.date));
     return L;
@@ -1246,7 +1251,7 @@ async function renderTeams() {
 function convCard(c) {
     const disputed = !!c.staleDateDisputed;
     const tone = c.noCaptures || (c.isStale && !disputed) ? "bad" : c.hasProblem || disputed ? "warn" : "good";
-    const when = c.lastCaptured
+    const when = c.lastCaptured && c.daysSinceCapture != null
         ? c.daysSinceCapture + " day" + (c.daysSinceCapture === 1 ? "" : "s") + " ago"
         : c.noCaptures ? "none recorded" : "date unverified";
     const problems = [];
@@ -1262,8 +1267,10 @@ function convCard(c) {
         problems.push("Known source IDs lack capture detail records; reconcile the chat index.");
     if (c.unknownCompleteness)
         problems.push("Capture completeness is unconfirmed; reconcile it against the existing source evidence.");
+    if (c.unknownCaptureDate)
+        problems.push("Capture dates are unverified; reconcile them before relying on a coverage age.");
     if (c.needsReconciliation && !(c.unregistered || []).length &&
-        !(c.identityConflicts || []).length && !c.indexDetailGap && !c.unknownCompleteness)
+        !(c.identityConflicts || []).length && !c.indexDetailGap && !c.unknownCompleteness && !c.unknownCaptureDate)
         problems.push("Coverage details need reconciliation with the chat index.");
     if (c.authoredIncomplete)
         problems.push("The index marks this thread as not fully captured" + (c.capturedNote ? " \u2014 " + c.capturedNote : "") + ".");
@@ -1320,7 +1327,8 @@ async function renderFiles() {
     const d = DATA;
     const groups = new Map();
     for (const f of d.files) {
-        const top = f.rel.includes("/") ? f.rel.split("/")[0] : "(root)";
+        const parts = pathParts(f.rel);
+        const top = parts.length > 1 ? parts[0] : "(root)";
         if (!groups.has(top)) groups.set(top, []);
         groups.get(top).push(f);
     }
@@ -1388,7 +1396,7 @@ async function showFile(rel) {
                 '<img class="preview" alt="' + h(rel) + '" src="' + h(rawUrl(rel)) + '">';
         } else if (f.kind === "binary") {
             body =
-                '<div class="binmsg"><strong>' + h(rel.split("/").pop()) + "</strong> is a binary file (" +
+                '<div class="binmsg"><strong>' + h(pathParts(rel).at(-1)) + "</strong> is a binary file (" +
                 kbs(f.size) + ").<br>It can be inventoried and cited, but not previewed here.</div>";
         } else if (/\.md$/i.test(rel)) body = '<div class="md">' + md(f.text) + "</div>";
         else if (/\.csv$/i.test(rel)) body = '<div class="md">' + csvTable(f.text) + "</div>";
@@ -1500,16 +1508,9 @@ async function renderPicker(errMsg, lastTried) {
     const b = data.browse;
 
     const crumbs = b
-        ? (() => {
-              const parts = b.path.split("/").filter(Boolean);
-              let acc = "";
-              const out = [];
-              for (const part of parts) {
-                  acc += "/" + part;
-                  out.push('<button data-go="' + h(acc) + '">' + h(part) + "</button>");
-              }
-              return '<button data-go="/">/</button>' + out.join('<span aria-hidden="true">/</span>');
-          })()
+        ? b.breadcrumbs
+              .map((entry) => '<button data-go="' + h(entry.path) + '">' + h(entry.name) + "</button>")
+              .join('<span aria-hidden="true">/</span>')
         : "";
 
     $("#app").innerHTML = `<div class="picker">
