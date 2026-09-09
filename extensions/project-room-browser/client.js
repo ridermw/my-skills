@@ -342,9 +342,9 @@ function overviewFlags(d) {
             count: nc.length,
             title: plural(nc.length, "source") + " not safe to cite as current",
             body:
-                "Superseded or abandoned sources are kept so old citations still resolve, not because they are usable. " +
+                "Non-current or unverified sources stay listed so old citations can be reconciled, not as current evidence. " +
                 (nc.some((s) => s.runnable)
-                    ? "At least one is a runnable procedure: running an abandoned runbook can break a live deployment."
+                    ? "Verify lifecycle and authority before running any listed procedure."
                     : "Check the lifecycle before quoting any of these."),
             items: nc.map((s) => ({
                 label: s.id + " \u00b7 " + s.lifecycle + (s.runnable ? " \u00b7 runnable procedure" : "") + " \u00b7 " + s.path,
@@ -860,8 +860,9 @@ function renderReview() {
     if (cur) cur.scrollIntoView({ block: "nearest" });
 }
 
-const VIEWER_EMPTY =
-    '<div class="backbar"><button class="btn" type="button" id="backtree">\u2190 All files</button></div>' +
+const VIEWER_BACK =
+    '<div class="backbar"><button class="btn" type="button" id="backtree">\u2190 All files</button></div>';
+const VIEWER_EMPTY = VIEWER_BACK +
     '<div class="empty"><strong>Pick a file</strong><br>Markdown and CSV render inline, images preview, other binaries are listed but not shown.</div>';
 
 /* Selection updates the tree IN PLACE. Re-rendering the tree destroys its
@@ -897,6 +898,7 @@ async function selectFile(rel, opts) {
 }
 
 function clearFileSelection() {
+    const previous = FILE;
     FILE = null;
     applyFileSelection(null);
     const v = $("#viewer");
@@ -905,6 +907,10 @@ function clearFileSelection() {
         v.scrollTop = 0;
         wireBackTree();
     }
+    const opts = [...document.querySelectorAll("#tree .f")];
+    const target = opts.find((b) => b.dataset.rel === previous) || opts[0];
+    opts.forEach((b) => { b.tabIndex = b === target ? 0 : -1; });
+    if (target) target.focus({ preventScroll: true });
 }
 
 function wireBackTree() {
@@ -917,7 +923,8 @@ function moveFileSelection(dir) {
     if (!tree) return;
     const opts = [...tree.querySelectorAll(".f")];
     if (!opts.length) return;
-    const i = opts.findIndex((b) => b.getAttribute("aria-current") === "true");
+    const focused = opts.indexOf(document.activeElement);
+    const i = focused >= 0 ? focused : opts.findIndex((b) => b.getAttribute("aria-current") === "true");
     let n;
     if (dir === "home") n = 0;
     else if (dir === "end") n = opts.length - 1;
@@ -1068,7 +1075,7 @@ function buildRefreshPrompt(d) {
     if (hl.refreshedDaysAgo != null) facts.push("last_refreshed was " + hl.refreshedDaysAgo + " days ago");
     if ((hl.staleRenders || []).length) facts.push((hl.staleRenders || []).length + " render(s) past the expiry window");
     if ((hl.missingOnDisk || []).length) facts.push((hl.missingOnDisk || []).length + " inventory row(s) pointing at a missing file");
-    if ((hl.notCurrent || []).length) facts.push((hl.notCurrent || []).length + " source(s) marked superseded or abandoned");
+    if ((hl.notCurrent || []).length) facts.push((hl.notCurrent || []).length + " source(s) not safe to cite as current");
     if ((hl.uninventoried || []).length) facts.push((hl.uninventoried || []).length + " file(s) on disk with no inventory row");
     if (d.teams && d.teams.counts && d.teams.counts.unregistered)
         facts.push(d.teams.counts.unregistered + " conversation capture(s) in the inventory but absent from the chat index");
@@ -1463,7 +1470,8 @@ async function showFile(rel) {
     const v = $("#viewer");
     if (!v) return;
     const current = () => generation === fileLoadGeneration && FILE === rel && v === $("#viewer");
-    v.innerHTML = '<div class="skeleton"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div><div class="sk w40"></div></div>';
+    v.innerHTML = VIEWER_BACK + '<div class="skeleton"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div><div class="sk w40"></div></div>';
+    wireBackTree();
     try {
         const r = await api("/api/file?rel=" + encodeURIComponent(rel));
         const j = await r.json();
@@ -1484,7 +1492,7 @@ async function showFile(rel) {
         else if (/\.csv$/i.test(rel)) body = '<div class="md">' + csvTable(f.text) + "</div>";
         else body = "<pre>" + h(f.text) + "</pre>";
         v.innerHTML =
-            '<div class="backbar"><button class="btn" type="button" id="backtree">\u2190 All files</button></div>' +
+            VIEWER_BACK +
             `<div class="vhead"><span class="p">${h(rel)}</span>${
                 j.file.truncated ? '<span class="badge b-amber">truncated</span>' : ""
             }</div>` + body;
@@ -1493,7 +1501,8 @@ async function showFile(rel) {
         v.scrollTop = 0;
     } catch (e) {
         if (!current()) return;
-        v.innerHTML = '<div class="err"><h3>Could not open file</h3><div>' + h(e.message) + "</div></div>";
+        v.innerHTML = VIEWER_BACK + '<div class="err"><h3>Could not open file</h3><div>' + h(e.message) + "</div></div>";
+        wireBackTree();
     }
 }
 
@@ -1650,7 +1659,7 @@ async function renderPicker(errMsg, lastTried) {
 
     $("#pasteform").onsubmit = (ev) => {
         ev.preventDefault();
-        const v = $("#pathin").value.trim();
+        const v = $("#pathin").value;
         if (v) openRoom(v);
     };
     document.querySelectorAll("[data-open]").forEach((el) => {

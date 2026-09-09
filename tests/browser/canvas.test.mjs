@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
-import { mkdir, rename, writeFile, rm } from "node:fs/promises";
+import { cp, mkdir, rename, truncate, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { makeRoom, serveRoom } from "../helpers/canvas-fixture.mjs";
@@ -552,7 +552,7 @@ test("a real deeply nested room retains its exact action target", async (t) => {
 
 for (const [condition, expected] of [
     ["clean", 0], ["missing manifest", 1], ["missing inventory", 2],
-    ["empty inventory", 2], ["unknown lifecycle", 1], ["unrecognised layout", 1],
+    ["empty inventory", 2], ["unknown lifecycle", 1], ["unavailable lifecycle", 1], ["unrecognised layout", 1],
     ["large unregistered group", 55],
 ]) {
     test(`Overview badge counts rendered evidence for ${condition}`, async (t) => {
@@ -563,6 +563,11 @@ for (const [condition, expected] of [
         if (condition === "empty inventory") await writeFile(inventory, "Source ID,Path,Authority,Current or superseded\n");
         if (condition === "unknown lifecycle") await writeFile(inventory,
             "Source ID,Path,Authority,Current or superseded\nS001,00_originals/source-1.txt,Primary,unknown\n");
+        if (condition === "unavailable lifecycle") {
+            await rm(path.join(root, "00_originals/source-1.txt"));
+            await writeFile(inventory,
+                "Source ID,Path,Authority,Current or superseded\nS001,00_originals/source-1.txt,Primary,Unavailable\n");
+        }
         if (condition === "unrecognised layout") {
             await rename(path.join(root, "00_originals/source-1.txt"), path.join(root, "source.txt"));
             await rm(path.join(root, "00_originals"), { recursive: true });
@@ -578,6 +583,11 @@ for (const [condition, expected] of [
         else {
             assert.equal(await badge.count(), 0);
             assert.equal(await page.locator("#p-overview .flag.ok").count(), 1);
+        }
+        if (condition === "unavailable lifecycle") {
+            assert.match(await page.locator("#p-overview").textContent(), /Non-current or unverified sources/);
+            await page.locator("#act-refresh").click();
+            assert.match(await page.locator("#promptout").textContent(), /source\(s\) not safe to cite as current/);
         }
     });
 }
@@ -637,4 +647,84 @@ test("duplicate conversation indexes show an error instead of misdirected action
     await page.locator("#tab-teams").click();
     assert.match(await page.locator("#p-teams").textContent(), /Could not read the chat index/);
     assert.equal(await page.locator("[data-act]").count(), 0);
+});
+
+test("narrow file previews can return to the tree while a request is pending", async (t) => {
+    const root = await makeRoom(t, 3);
+    const { page } = await openPage(t, root, 500);
+    let release;
+    let seen;
+    const pending = new Promise((resolve) => { release = resolve; });
+    const requested = new Promise((resolve) => { seen = resolve; });
+    await page.route("**/api/file?rel=00_originals%2Fsource-2.txt", async (route) => {
+        seen();
+        await pending;
+        await route.fulfill({ json: { ok: true, file: { kind: "text", size: 10, text: "Late source 2" } } });
+    });
+    await page.locator("#tab-files").click();
+    await page.locator('[data-rel="00_originals/source-2.txt"]').click();
+    await requested;
+    try {
+        await page.locator("#backtree").waitFor({ state: "visible" });
+        await page.locator("#backtree").press("Enter");
+        assert.equal(await page.locator("#tree").isVisible(), true);
+        assert.equal(await page.evaluate(() => document.activeElement.dataset.rel), "00_originals/source-2.txt");
+    } finally {
+        const response = page.waitForResponse((r) => r.url().includes("source-2.txt"));
+        release();
+        await response;
+    }
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.doesNotMatch(await page.locator("#viewer").textContent(), /Late source 2/);
+    await page.locator('#tree [data-rel="00_originals/source-2.txt"]').press("ArrowDown");
+    await page.waitForFunction(() => document.querySelector("#viewer")?.textContent.includes("Source 3 contents"));
+});
+
+test("narrow file preview errors retain a keyboard-operable Back control", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root, 500);
+    await page.route("**/api/file?rel=*", (route) => route.fulfill({
+        status: 500, json: { ok: false, error: "Synthetic preview failure" },
+    }));
+    await page.locator("#tab-files").click();
+    await page.locator('[data-rel="00_originals/source-1.txt"]').click();
+    await page.locator("#viewer .err").waitFor();
+    await page.locator("#backtree").press("Enter");
+    assert.equal(await page.locator("#tree").isVisible(), true);
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.rel), "00_originals/source-1.txt");
+});
+
+test("picker preserves a real POSIX room path ending in a space", {
+    skip: process.platform === "win32" && "Distinct POSIX trailing-space directory names are required",
+}, async (t) => {
+    const root = await makeRoom(t);
+    const plain = path.join(root, "target");
+    const spaced = path.join(root, "target ");
+    for (const target of [plain, spaced]) {
+        await mkdir(target);
+        for (const name of ["room.yaml", "00_originals", "02_inventory"]) {
+            await cp(path.join(root, name), path.join(target, name), { recursive: true });
+        }
+    }
+    const { page } = await openPage(t, root);
+    await page.locator("#switchroom").click();
+    await page.locator("#pathin").fill(spaced);
+    await page.locator("#pathin").press("Enter");
+    await page.locator(".rail").waitFor();
+    assert.equal(await page.evaluate(() => DATA.root), spaced);
+});
+
+test("oversized images report a non-previewable file instead of requesting broken raw content", async (t) => {
+    const root = await makeRoom(t);
+    const rel = "00_originals/oversized.png";
+    await writeFile(path.join(root, rel), Buffer.from("89504e470d0a1a0a", "hex"));
+    await truncate(path.join(root, rel), 25 * 1024 * 1024 + 1);
+    const { page } = await openPage(t, root);
+    const rawRequests = [];
+    page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/raw") rawRequests.push(request.url()); });
+    await page.locator("#tab-files").click();
+    await page.locator(`[data-rel="${rel}"]`).click();
+    await page.locator("#viewer .binmsg").waitFor();
+    assert.equal(await page.locator("#viewer img").count(), 0);
+    assert.deepEqual(rawRequests, []);
 });

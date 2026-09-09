@@ -30,7 +30,7 @@ open the project-room canvas for ~/project-rooms/<room>
 | **Sources** | The inventory, faceted by Authority and Lifecycle, with full-text search. |
 | **Room docs** | README, change log, conflict log, duplicate log, missing context. |
 | **Teams** | One card per *conversation*: cadence-aware coverage age, partial captures, missing artifacts, known gaps, and index reconciliation needs. Only actual capture gaps enter the sweep plan; disputed identities and incomplete index records stay visible without inventing missing captures. |
-| **Files** | Every file in the room, with markdown/CSV rendered and images previewed. |
+| **Files** | Every file in the room, with bounded text and image previews. |
 
 Conversation age uses effective current captures, while historical captures stay
 visible. Unregistered captures remain reconciliation work regardless of age.
@@ -42,6 +42,8 @@ Markdown preview share table-cell parsing so escaped pipes cannot shift columns.
 Artifacts without a conversation match remain visible in a separate unattributed
 collection, with an Index action for reconciliation rather than automatic
 re-capture. Duplicate conversation indexes are rejected before actions appear.
+Conversation identity comes from declared `chat_id` metadata, not incidental
+references in notes.
 
 ## Screenshot
 
@@ -79,6 +81,9 @@ Prompt paths preserve their exact spelling, including whitespace, within a
 32,768-character budget; larger paths are explicitly omitted, not shortened into
 a different target. Bounded inbox listings report both the total and omitted
 path counts.
+Room selection also preserves the entered path's whitespace. File previews keep
+their Back control during loading and errors, returning keyboard focus to the
+file tree without accepting a late response.
 
 ## Local access
 
@@ -96,7 +101,8 @@ memory or private launch-link records.
 Manifest-selected files must remain inside the room, including through
 symlinks. Metadata files are limited to 2 MiB each and rejected rather than
 partially parsed. Text previews show up to 2 MiB, and raw image previews are
-limited to 25 MiB. Source paths use consistent separators, and unrecognised
+limited to 25 MiB; larger images are listed as non-previewable files rather than
+broken image previews. Source paths use consistent separators, and unrecognised
 source layouts are reported as unverified rather than clean.
 
 ## Testing

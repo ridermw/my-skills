@@ -1223,3 +1223,104 @@ for (const field of ["id", "date", "path", "type"]) {
         assert.deepEqual(data.targets, []);
     });
 }
+
+for (const [name, field] of [
+    ["plain canonical field", `chat_id: \`${alphaId}\``],
+    ["bold field including colon", `**chat_id:** \`${alphaId}\``],
+    ["bold field with external colon", `**chat_id**: \`${alphaId}\``],
+    ["repeated identical declarations", `chat_id: \`${alphaId}\`\n**chat_id:** \`${alphaId}\``],
+]) {
+    test(`chat ID metadata retains ${name}`, () => {
+        const parsed = teams.parseChatIndex(chatIndex({ details: [`## 1. Alpha\n${field}`] }));
+        assert.equal(parsed.conversations[0].chatId, alphaId);
+        assert.deepEqual(parsed.identityConflicts, []);
+    });
+}
+
+test("chat ID metadata wins over a misleading note before the real field", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        quickRows: [`| 1 | Alpha | \`${alphaId}\` | Group | S001 | complete |`],
+        details: [`## 1. Alpha\nNote: another thread is \`${betaId}\`.\nchat_id: \`${alphaId}\``],
+    }));
+    assert.equal(parsed.conversations.length, 1);
+    assert.equal(parsed.conversations[0].chatId, alphaId);
+    assert.deepEqual(parsed.conversations[0].quickSourceIds, ["S001"]);
+    assert.equal(parsed.conversations[0].fullyCaptured, true);
+    assert.deepEqual(parsed.identityConflicts, []);
+});
+
+for (const [name, example] of [
+    ["incidental note", `Note: see \`${betaId}\` for background.`],
+    ["quoted plain field", `> chat_id: \`${betaId}\``],
+    ["quoted bold field", `> **chat_id:** \`${betaId}\``],
+    ["backtick-fenced field", "```markdown\n" + `chat_id: \`${betaId}\`` + "\n```"],
+    ["tilde-fenced field", "~~~markdown\n" + `**chat_id:** \`${betaId}\`` + "\n~~~"],
+    ["space-indented code", `    chat_id: \`${betaId}\``],
+    ["tab-indented code", `\tchat_id: \`${betaId}\``],
+]) {
+    for (const declared of [false, true]) {
+        test(`chat ID metadata ignores ${name} ${declared ? "before a real field" : "without a real field"}`, () => {
+            const body = `## 1. Alpha\n${example}\n\n` + (declared ? `chat_id: \`${alphaId}\`` : "");
+            const parsed = teams.parseChatIndex(chatIndex({ details: [body] }));
+            const expected = declared ? alphaId : null;
+            assert.equal(parsed.conversations[0].chatId, expected);
+            const health = teams.teamsHealth(parsed, { now });
+            assert.equal(health.conversations[0].chatId, expected);
+            assert.equal(sweepData(teams.sweepPlan(health).text).data.targets[0].chatId, expected);
+        });
+    }
+}
+
+test("chat ID metadata does not close a fence with a shorter or different marker", () => {
+    const parsed = teams.parseChatIndex(chatIndex({ details: [
+        "## 1. Alpha\n````markdown\n" + `chat_id: \`${betaId}\`\n`
+        + "```\n~~~\n" + "**chat_id:** `19:also-an-example`\n"
+        + "````\n" + `chat_id: \`${alphaId}\``,
+    ] }));
+    assert.equal(parsed.conversations[0].chatId, alphaId);
+});
+
+test("chat ID metadata cannot turn a fenced heading into a conversation", () => {
+    const parsed = teams.parseChatIndex("# Chat index\n## Notes\n```markdown\n"
+        + `## 1. Alpha\nchat_id: \`${betaId}\`\n`
+        + "```\n" + `chat_id: \`${alphaId}\`\n`);
+    assert.equal(parsed, null);
+});
+
+test("chat ID metadata ignores fenced headings before a real declaration", () => {
+    const parsed = teams.parseChatIndex(chatIndex({ details: [
+        "## 1. Alpha\n```markdown\n## 2. Example\n" + `chat_id: \`${betaId}\`\n`
+        + "```\n" + `chat_id: \`${alphaId}\`\n`,
+    ] }));
+    assert.equal(parsed.conversations.length, 1);
+    assert.equal(parsed.conversations[0].index, 1);
+    assert.equal(parsed.conversations[0].chatId, alphaId);
+});
+
+test("chat ID metadata inside an unclosed fence never becomes a declared identity", () => {
+    const parsed = teams.parseChatIndex(chatIndex({ details: [
+        "## 1. Alpha\n```markdown\n" + `chat_id: \`${betaId}\``,
+    ] }));
+    assert.equal(parsed.conversations[0].chatId, null);
+});
+
+test("chat ID metadata absence cannot be repaired using an incidental ID and positional hints", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        quickRows: [`| 1 | Alpha | \`${betaId}\` | Group | S999 | complete |`],
+        details: [`## 1. Alpha\nNote: related thread \`${betaId}\`.`],
+    }));
+    assert.equal(parsed.conversations[0].chatId, null);
+    assert.equal(parsed.conversations[0].fullyCaptured, undefined);
+    assert.equal(parsed.conversations[0].quickSourceIds, undefined);
+    assert.equal(parsed.identityConflicts.length, 1);
+    assert.equal(parsed.identityConflicts[0].reason, "unmatched-chat-id");
+});
+
+for (const [first, second] of [[alphaId, betaId], [betaId, alphaId]]) {
+    test(`chat ID metadata rejects conflicting declarations beginning with ${first}`, () => {
+        assert.throws(() => teams.parseChatIndex(chatIndex({
+            quickRows: [`| 1 | Alpha | \`${first}\` | Group | S001 | complete |`],
+            details: [`## 1. Alpha\nchat_id: \`${first}\`\n**chat_id:** \`${second}\``],
+        })), /conflicting.*chat_id/i);
+    });
+}

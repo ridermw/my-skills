@@ -20,7 +20,7 @@ import { parseMarkdownTableRow } from "./markdown-table.mjs";
 const RX = {
     heading: /^##\s+(.+?)\s*$/,
     numbered: /^(\d+)\s*[·.]\s*(.+)$/,
-    chatId: /`(19:[^`]+)`/,
+    chatId: /^ {0,3}(?:chat_id:|\*\*chat_id:\*\*|\*\*chat_id\*\*:)[ \t]*`(19:[^`\s]+)`(?:[ \t]|$)/i,
     created: /created\s+(\d{4}-\d{2}-\d{2})/i,
     tableRow: /^\|(.+)\|\s*$/,
     tableSep: /^\|[\s:|-]+\|$/,
@@ -150,12 +150,27 @@ export function parseChatIndex(text) {
 
     // split into ## sections
     const sections = [];
-    let cur = { title: "(intro)", lines: [] };
+    let cur = { title: "(intro)", lines: [], chatIds: new Set() };
+    let fence = null;
     for (const line of lines) {
+        // Fenced examples are not section structure or conversation metadata.
+        const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+        if (fence) {
+            if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) {
+                fence = null;
+            }
+            continue;
+        }
+        if (marker) {
+            fence = marker[1];
+            continue;
+        }
+        const idm = line.match(RX.chatId);
+        if (idm) cur.chatIds.add(idm[1]);
         const m = line.match(RX.heading);
         if (m) {
             sections.push(cur);
-            cur = { title: m[1], lines: [] };
+            cur = { title: m[1], lines: [], chatIds: new Set() };
         } else cur.lines.push(line);
     }
     sections.push(cur);
@@ -209,7 +224,7 @@ export function parseChatIndex(text) {
 
         // a numbered section is one conversation
         const body = sec.lines.join("\n");
-        const idm = body.match(RX.chatId);
+        if (sec.chatIds.size > 1) throw new Error("Invalid chat index: conflicting chat_id declarations for conversation " + index);
         const meta = labelled(sec.lines);
         const title = numbered[2];
         const dash = title.split(/\s+[—–]\s+/);
@@ -218,7 +233,7 @@ export function parseChatIndex(text) {
             index,
             name: stripMd(dash[0]),
             kindLabel: dash[1] ? stripMd(dash[1]) : "",
-            chatId: idm ? idm[1] : null,
+            chatId: sec.chatIds.values().next().value || null,
             created: (body.match(RX.created) || [])[1] || null,
             organizer: meta.organizer || null,
             recurs: meta.recurs || null,

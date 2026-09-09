@@ -1090,3 +1090,71 @@ for (const ext of [".txt", ".md", ".csv"]) {
         }
     });
 }
+
+for (const [rel, size, kind, mime] of [
+    ["small.png", 6, "image", "image/png"],
+    ["boundary.png", RAW_LIMIT, "image", "image/png"],
+    ["oversized.png", RAW_LIMIT + 1, "binary", null],
+    ["oversized.JPG", RAW_LIMIT + 1, "binary", null],
+    ["oversized.svg", RAW_LIMIT + 1, "binary", null],
+]) {
+    test(`image preview size limit classifies ${rel} at ${size} bytes`, async (t) => {
+        const { root } = await fixture(t);
+        const handle = await open(path.join(root, rel), "w");
+        try {
+            await handle.write(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff]));
+            await handle.truncate(size);
+        } finally {
+            await handle.close();
+        }
+        const preview = await readRoomFile(root, rel);
+        assert.equal(preview.kind, kind);
+        assert.equal(preview.size, size);
+        assert.equal(preview.truncated, false);
+        assert.equal(preview.text, undefined);
+        if (kind === "image") {
+            const raw = await readRoomBytes(root, rel);
+            assert.equal(raw.buf.length, size);
+            assert.equal(raw.mime, mime);
+            assert.deepEqual([...raw.buf.subarray(0, 6)], [0x89, 0x50, 0x4e, 0x47, 0, 0xff]);
+        } else {
+            await assert.rejects(readRoomBytes(root, rel), /exceeds the preview limit/);
+        }
+    });
+}
+
+test("image preview size limit rejects oversized payloads without allocating their bytes", async (t) => {
+    const { root } = await fixture(t);
+    const handle = await open(path.join(root, "oversized.png"), "w");
+    try {
+        await handle.truncate(RAW_LIMIT + 1);
+    } finally {
+        await handle.close();
+    }
+    const { stdout } = await exec(process.execPath, [
+        "--max-old-space-size=48", "--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import { readRoomFile, readRoomBytes } from ${JSON.stringify(moduleUrl)};
+            const before = process.memoryUsage().arrayBuffers;
+            const preview = await readRoomFile(process.argv[1], "oversized.png");
+            assert.equal(preview.kind, "binary");
+            assert.equal(preview.size, ${RAW_LIMIT + 1});
+            await assert.rejects(readRoomBytes(process.argv[1], "oversized.png"), /exceeds the preview limit/);
+            const allocated = process.memoryUsage().arrayBuffers - before;
+            assert.ok(allocated < 1024 * 1024, "Image metadata allocated " + allocated + " bytes");
+            console.log("metadata-only image rejection");
+        `, root,
+    ], { timeout: 30000 });
+    assert.equal(stdout.trim(), "metadata-only image rejection");
+});
+
+test("chat ID metadata conflicts surface as a room Teams error without exposing conversations", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "02_inventory/chat-index.md", "# Chat index\n\n## 1. Alpha\n"
+        + "chat_id: `19:alpha`\n**chat_id:** `19:beta`\n");
+    const room = await readRoom(root);
+    assert.equal(typeof room.teams.error, "string");
+    assert.match(room.teams.error, /conflicting.*chat_id/i);
+    assert.equal(room.teams.conversations, undefined);
+    assert.equal(room.teams.counts, undefined);
+});

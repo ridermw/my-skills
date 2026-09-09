@@ -694,7 +694,7 @@ export async function readRoomFile(roomPath, rel) {
         const ext = path.extname(target).toLowerCase();
         const meta = { rel, size: s.size, ext, mtime: s.mtime.toISOString().slice(0, 10) };
 
-        if (IMAGE_EXT.has(ext)) return { ...meta, kind: "image", truncated: false };
+        if (IMAGE_EXT.has(ext)) return { ...meta, kind: s.size <= MAX_RAW ? "image" : "binary", truncated: false };
 
         // Look ahead one complete UTF-8 character / UTF-16 surrogate pair.
         const buf = await readPrefix(handle, MAX_TEXT + 4);
