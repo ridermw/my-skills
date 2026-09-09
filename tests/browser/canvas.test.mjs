@@ -839,6 +839,94 @@ test("an inbox file contributes only one Overview flag", async (t) => {
     assert.equal(await page.locator("#tab-overview .n").textContent(), "1 flag");
 });
 
+test("Overview inventory subtraction stays linear at the 10,000-entry boundary", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    const result = await page.evaluate(() => {
+        const paths = Array.from({ length: 10000 }, (_, i) =>
+            `${i < 5000 ? "01_inbox" : "00_originals"}/file-${i}.txt`);
+        const inbox = paths.slice(0, 5000);
+        const limit = 12 * (paths.length + inbox.length);
+        const exceeded = new Error("Overview subtraction exceeded its linear input-access budget");
+        let accesses = 0;
+        const tracked = (values) => new Proxy(values, {
+            get(target, key, receiver) {
+                if (typeof key === "string" && /^(0|[1-9]\d*)$/.test(key) && ++accesses > limit) throw exceeded;
+                return Reflect.get(target, key, receiver);
+            },
+        });
+        let flags;
+        try {
+            flags = overviewFlags({
+                ...DATA,
+                health: { ...DATA.health, inboxPending: tracked(inbox), uninventoried: tracked(paths) },
+            });
+        } catch (error) {
+            if (error !== exceeded) throw error;
+        }
+        return {
+            accesses, limit, completed: !!flags,
+            counts: flags?.map((flag) => flag.count),
+            otherPaths: flags?.[1]?.items.map((item) => item.path),
+        };
+    });
+    assert.equal(result.completed, true, `Observed ${result.accesses} input accesses; linear ceiling is ${result.limit}`);
+    assert.ok(result.accesses <= result.limit);
+    assert.deepEqual(result.counts, [5000, 5000]);
+    assert.deepEqual(result.otherPaths, Array.from({ length: 40 }, (_, i) => `00_originals/file-${5000 + i}.txt`));
+});
+
+test("Overview inventory subtraction preserves empty, overlapping, distinct and duplicate paths", async (t) => {
+    const root = await makeRoom(t);
+    const { page } = await openPage(t, root);
+    const results = await page.evaluate(() => [
+        [[], []],
+        [["01_inbox/a.md"], ["01_inbox/a.md"]],
+        [["01_inbox/a.md"], ["00_originals/b.md", "00_originals/c.md"]],
+        [["01_inbox/a.md", "01_inbox/a.md"],
+            ["00_originals/b.md", "01_inbox/a.md", "00_originals/b.md", "00_originals/C.md", "00_originals/c.md"]],
+    ].map(([inboxPending, uninventoried]) => overviewFlags({
+        ...DATA, health: { ...DATA.health, inboxPending, uninventoried },
+    }).map((flag) => ({ count: flag.count, paths: (flag.items || []).map((item) => item.path) }))));
+    assert.deepEqual(results, [
+        [{ count: 0, paths: [] }],
+        [{ count: 1, paths: ["01_inbox/a.md"] }],
+        [{ count: 1, paths: ["01_inbox/a.md"] }, { count: 2, paths: ["00_originals/b.md", "00_originals/c.md"] }],
+        [{ count: 2, paths: ["01_inbox/a.md", "01_inbox/a.md"] },
+            { count: 4, paths: ["00_originals/b.md", "00_originals/b.md", "00_originals/C.md", "00_originals/c.md"] }],
+    ]);
+});
+
+for (const [field, attr, expected] of [
+    ["Authority", "data-fa", [["__proto__", 3], ["constructor", 2], ["toString", 2], ["Ordinary", 2], ["\u2014", 1]]],
+    ["Lifecycle", "data-fl", [["toString", 3], ["\u2014", 2], ["constructor", 2], ["__proto__", 2], ["Ordinary", 1]]],
+]) {
+    test(`Overview category buckets preserve ${field} prototype labels, counts, ties and filtering`, async (t) => {
+        const root = await makeRoom(t, 10);
+        const authority = ["__proto__", "constructor", "toString", "Ordinary", "", "__proto__", "constructor", "toString", "Ordinary", "__proto__"];
+        const lifecycle = ["toString", "", "constructor", "__proto__", "Ordinary", "toString", "", "constructor", "__proto__", "toString"];
+        await writeFile(path.join(root, "02_inventory/source_inventory.csv"), [
+            "Source ID,Path,Authority,Current or superseded",
+            ...authority.map((value, i) => `S${String(i + 1).padStart(3, "0")},00_originals/source-${i + 1}.txt,${value},${lifecycle[i]}`), "",
+        ].join("\n"));
+        const { page, errors } = await openPage(t, root);
+        const buckets = await page.locator(`#p-overview [${attr}]`).evaluateAll((buttons) =>
+            buttons.map((button) => [button.querySelector(".badge").textContent, Number(button.querySelector(".c").textContent)]));
+        assert.deepEqual(buckets, expected);
+        assert.equal(await page.locator(".cards .card").first().locator(".v").textContent(), "10");
+        const expectedIds = [["S001", "S006", "S010"], ["S002", "S007"], ["S003", "S008"], ["S004", "S009"], ["S005"]];
+        for (const [index, [label]] of expected.entries()) {
+            await page.locator("#tab-overview").click();
+            await keyboardActivate(page, `#p-overview [${attr}="${label}"]`);
+            assert.equal(await page.locator("#tab-inventory").getAttribute("aria-selected"), "true");
+            assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), expectedIds[index]);
+            assert.equal(await page.locator(`#facets [data-f="${field}"][data-v="${label}"]`).getAttribute("aria-pressed"), "true");
+            assert.equal(await page.locator("#qcount").textContent(), `${expectedIds[index].length} of 10`);
+        }
+        assert.deepEqual(errors, []);
+    });
+}
+
 test("task prompts describe follow-up without embedding an executable workflow", async (t) => {
     const root = await makeRoom(t);
     const { page } = await openPage(t, root);

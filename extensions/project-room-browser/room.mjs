@@ -49,6 +49,7 @@ export function parseCsv(text) {
             started = true;
         }
     }
+    if (inQuotes) throw new Error("Invalid CSV: unterminated quoted field");
     if (started || field || row.length) {
         row.push(field);
         rows.push(row);
@@ -512,7 +513,7 @@ export async function readRoom(roomPath) {
        transcript for the same 1:1 sits in the inventory is a false staleness
        reading, so cross-check the two and report the disagreement rather than
        trusting the index alone. */
-    const CONVERSATION_ARTIFACT = /transcript|recap|1:1|1x1|chat|insights|meeting summary/i;
+    const CONVERSATION_ARTIFACT = /(?:^|[^\p{L}\p{N}])(?:transcripts?|recaps?|chats?|insights|1[:x]1|meeting[^\p{L}\p{N}]+summar(?:y|ies))(?=$|[^\p{L}\p{N}])/iu;
     function unregisteredCaptures(convs) {
         // Only tokens unique to ONE conversation can attribute a file, otherwise
         // two similarly-named threads would claim the same source.

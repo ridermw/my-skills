@@ -55,6 +55,35 @@ async function fixture(t, manifest = "project: Fixture\n") {
     return { base, root, outside };
 }
 
+for (const [name, text] of [
+    ["header", '"Source ID,Path'],
+    ["final field", 'Source ID,Path\nS001,"00_originals/report.md'],
+    ["multiline field", 'Source ID,Path\nS001,"first line\r\nsecond line\n'],
+    ["escaped quote at EOF", 'Source ID,Path\nS001,"unfinished ""'],
+]) {
+    test(`CSV quoted EOF rejects an unterminated ${name} instead of returning partial metadata`, () => {
+        assert.throws(() => roomModule.parseCsv(text), /unterminated.*quot/i);
+        assert.throws(() => roomModule.csvToObjects(text), /unterminated.*quot/i);
+    });
+}
+
+for (const ending of ["", "\n", "\r\n"]) {
+    test(`CSV quoted EOF preserves closed, escaped and multiline fields with ${JSON.stringify(ending)}`, () => {
+        const text = 'Source ID,Path,Note\r\nS001,"00_originals/a,b.md","first\r\nsecond ""quoted"""\r\nS002,"",""' + ending;
+        assert.deepEqual(roomModule.parseCsv(text), [
+            ["Source ID", "Path", "Note"],
+            ["S001", "00_originals/a,b.md", 'first\r\nsecond "quoted"'],
+            ["S002", "", ""],
+        ]);
+    });
+}
+
+test("CSV quoted EOF prevents readRoom from reporting a malformed inventory as valid", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "02_inventory/source_inventory.csv", '"Source ID,Path\nS001,00_originals/report.md');
+    await assert.rejects(readRoom(root), /unterminated.*quot/i);
+});
+
 for (const [input, expected] of [
     [String.raw`C:\rooms\alpha`, String.raw`C:\rooms\alpha`],
     ["https://example.test/repo", "https://example.test/repo"],
@@ -907,6 +936,38 @@ async function indexedConversations(t, { names = ["Alpha chat"], sources = [] } 
     await put(root, "02_inventory/chat-index.md", sections.join("\n"));
     await put(root, "02_inventory/source_inventory.csv", rows.join("\n"));
     return { root, index: sections.join("\n") };
+}
+
+for (const [file, type, artifact] of [
+    ["chatter.md", "Document", false],
+    ["recapitalization-notes.md", "Document", false],
+    ["transcriptome.csv", "Dataset", false],
+    ["prechat.md", "Document", false],
+    ["insightsarchive.md", "Document", false],
+    ["chat\u00e9.md", "Document", false],
+    ["\u00e9chat.md", "Document", false],
+    ["ordinary.md", "Document", false],
+    ["transcripts.json", "JSON", true],
+    ["recaps.json", "JSON", true],
+    ["meeting_summaries.md", "Document", true],
+    ["meeting-summary.md", "Document", true],
+    ["CHATS.json", "JSON", true],
+    ["copilot-insights.json", "JSON", true],
+    ["1x1-notes.json", "JSON", true],
+    ["ordinary.md", "Teams 1:1", true],
+    ["ordinary.md", "Meeting summary", true],
+    ["ordinary.md", "transcript", true],
+]) {
+    test(`artifact terms classify ${file} / ${type} without substring guesses`, async (t) => {
+        const source = { id: "MEMO-S0900", path: "00_originals/" + file, type, date: "2020-02-01" };
+        const { root } = await indexedConversations(t, { sources: [source] });
+        const room = await readRoom(root);
+        assert.equal(room.sources.length, 2);
+        assert.equal(room.sources[1]["Source ID"], source.id);
+        assert.deepEqual(room.teams.unattributedCaptures, artifact ? [source] : []);
+        assert.equal(room.teams.counts.unattributedCaptures, artifact ? 1 : 0);
+        assert.deepEqual(room.teams.conversations[0].unregistered, []);
+    });
 }
 
 test("ambiguous multi-name inventory sources preserve both stale verdicts and expose attribution conflicts", async (t) => {

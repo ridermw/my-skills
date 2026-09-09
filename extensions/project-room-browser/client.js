@@ -457,7 +457,8 @@ function overviewFlags(d) {
             body: "The inventory cites these paths but they are not on disk. Either the file moved, or the row needs a [REMOVED] marker.",
             items: hl.missingOnDisk.map((r) => ({ label: r.id + " · " + r.path, sourceId: r.id })),
         });
-    const other = hl.uninventoried.filter((f) => !inbox.includes(f));
+    const inboxPaths = new Set(inbox);
+    const other = hl.uninventoried.filter((f) => !inboxPaths.has(f));
     if (other.length)
         flags.push({
             cls: "warn",
@@ -488,7 +489,7 @@ function renderOverview(flags) {
     const d = DATA;
     const hl = d.health;
     const by = (f) => {
-        const m = {};
+        const m = Object.create(null);
         for (const s of d.sources) m[s[f] || "—"] = (m[s[f] || "—"] || 0) + 1;
         return Object.entries(m).sort((a, b) => b[1] - a[1]);
     };

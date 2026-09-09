@@ -43,7 +43,9 @@ Overview badges and cards use the same warning model. The coverage reader and
 Markdown preview share table-cell parsing so escaped pipes cannot shift columns.
 Artifacts without a conversation match remain visible in a separate unattributed
 collection, with an Index action for reconciliation rather than automatic
-re-capture. Duplicate conversation identities and quick-map targets are rejected
+re-capture. Capture classification uses whole terms in paths and source types,
+including plurals and filename separators, not substrings inside unrelated words.
+Duplicate conversation identities and quick-map targets are rejected
 before actions appear. Missing occurrence artifacts stay actionable unless the
 record rules out retrieval or the occurrence is still in the future.
 Conversation identity comes from declared `chat_id` metadata, not incidental
@@ -135,7 +137,9 @@ reader must not be treated as a race-safe boundary for an untrusted,
 concurrently modified room.
 
 Metadata files are limited to 2 MiB each and rejected rather than
-partially parsed. Text previews show up to 2 MiB, and raw image previews are
+partially parsed. An unterminated quoted inventory field rejects the room read
+instead of producing validity or health from partial CSV metadata.
+Text previews show up to 2 MiB, and raw image previews are
 limited to 25 MiB; larger images are listed as non-previewable files rather than
 broken image previews. Source paths use consistent separators, and unrecognised
 source layouts are reported as unverified rather than clean.
