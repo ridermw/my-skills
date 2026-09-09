@@ -25,7 +25,8 @@ report so the user is not left mapping three names onto one object.
 - "monitor PR [url] and let me know when the PR Build is completed and a work
   item has been linked"
 - "watch the build on this PR" / "ping me when the gate is green"
-- Checking whether an ADO PR is ready to complete.
+- Checking build and work-item conditions on an ADO PR. Full merge readiness
+  requires other policies too; passing these checks alone does not prove it.
 
 ## Inputs
 
@@ -64,58 +65,106 @@ server](https://github.com/microsoft/azure-devops-mcp), whose tools are prefixed
 **search first** (if your runtime has a tool-search facility) for
 `azure-devops|ado|pull_request|build|pipeline|work_item`, then pick the ones for:
 
-- get pull request by id (title, status, source/target branch)
-- list PR policy evaluations / statuses (the build/gate results)
+- get pull request by id (title, status, source/target branches and revisions)
+- list current PR policy evaluations, including configuration and run context
 - get build / pipeline run status + logs for the build id the policy points to
 - list PR work-item refs (linked work items)
 
-If a needed capability has no MCP tool, fall back to the Azure CLI with the
-`azure-devops` extension: `az repos pr show`, `az pipelines runs show`,
-`az pipelines runs tail`, and `az boards work-item show`. If neither the MCP
-server nor the CLI extension is available, say so and stop — do not fabricate
-build status.
+If a needed capability has no MCP tool, use the Azure CLI with the
+`azure-devops` extension: `az repos pr show`, `az repos pr policy list`,
+`az repos pr work-item list`, `az pipelines runs show`, and
+`az boards work-item show`. Supply the resolved organization/project explicitly.
+
+There is no `az pipelines runs tail` command. Use the authenticated REST
+transport available in the environment (`az devops invoke` is one option) for
+GET-only log retrieval:
+
+```text
+GET /{project}/_apis/build/builds/{buildId}/timeline?api-version=7.1
+GET /{project}/_apis/build/builds/{buildId}/logs?api-version=7.1
+GET /{project}/_apis/build/builds/{buildId}/logs/{logId}?startLine={start}&endLine={end}&api-version=7.1
+```
+
+These paths are relative to `https://dev.azure.com/{org}`. Use the timeline's
+failed task/job records and their log IDs; get line counts from the log list,
+then fetch a bounded range. See the official [Build Log API](https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/get-build-log?view=azure-devops-rest-7.1).
+If no authenticated read capability is available, report that and stop. Never
+queue/re-evaluate a policy or build to obtain fresh status.
 
 ## Procedure
 
-1. **Resolve the PR.** Fetch PR by id. Record title (the *stated goal*), status
-   (active/completed/abandoned), and source→target branches. If the PR is
-   already completed or abandoned, report that and stop — nothing to monitor.
-2. **Identify the build gate.** From the PR policy evaluations, find the required
-   Build policy and the build/pipeline run id it triggered. There may be more
-   than one required build; track all of them.
-3. **Poll to terminal state.** Every poll interval, re-check each tracked build's
-   status. Terminal states: `succeeded`, `failed`, `partiallySucceeded`,
-   `canceled`. Between polls, sleep the interval; stop as soon as all tracked
-   builds are terminal or `max wait` is hit. Do not hammer the API — respect the
-   interval. For long builds, prefer a scheduled re-check (see "Long builds").
-4. **Check work-item linkage.** Fetch the PR's linked work items. Note id(s) and
-   title(s), or that none is linked yet. Not every org enforces work-item
-   linkage — if no such policy exists on this PR, report linkage as
-   informational rather than as a blocker.
-5. **Evaluate the stop condition:**
-   - **Success:** all required builds `succeeded` **and** ≥1 work item linked →
-     report ready.
-   - **Build failed:** stop immediately. Fetch the failing build's timeline/log,
-     and report the failing stage/job + the last ~15 relevant error lines as a
-     root-cause hint.
-   - **Build green but no work item linked:** this is the common half-done case.
-     Report the build is green and explicitly flag the missing work-item link as
-     the remaining blocker. Poll a short while longer for the link if the user
-     asked to be told "when both are done," else report and stop.
-   - **Timeout:** report the last known status of every gate and stop.
-6. **Report** using this shape:
+1. **Set one deadline and resolve the PR.** Record start time and an absolute
+   deadline from `max wait`; neither a new push nor a scheduled wake resets it.
+   Check that deadline before each poll/wake and bound waits and request
+   timeouts by the remaining budget.
+   Fetch title, status, source/target branches, and current source/target commit
+   IDs (for example `lastMergeSourceCommit.commitId` and
+   `lastMergeTargetCommit.commitId`). A completed or abandoned PR is terminal.
+2. **Refresh associations on every poll.** Re-fetch the PR and all current
+   policy evaluations, following continuation pages. Identify enabled, blocking
+   Build policies and their current evaluation/run IDs; exclude disabled,
+   optional, and `notApplicable` evaluations from required-build success.
+   Replace cached associations when the PR revisions, policy set, evaluation,
+   or run changes. A newly queued evaluation without a run ID is pending, not
+   absent or successful. Do not select a pipeline's last successful run.
+3. **Read the currently associated runs.** Build `status` describes lifecycle
+   (`notStarted`, `inProgress`, `cancelling`, `postponed`, `completed`); `result`
+   describes the completed outcome. A run is terminal only when
+   `status: completed`. Do not equate `cancelling` with `canceled`.
+   A success candidate needs both `result: succeeded` and the current required
+   policy evaluation's `status: approved`. Queued/running evaluations remain
+   pending; rejected/broken evaluations are not success.
+   PR validation can build a synthetic merge commit, so do not demand raw
+   `build.sourceVersion == PR source SHA` equality. Establish relevance through
+   the current policy evaluation's run association and PR revisions. If that
+   association cannot be established, report it as unverified.
+4. **Check linkage according to the request.** List linked work items (all
+   pages) and obtain titles when available. A link is required when an enabled,
+   blocking work-item policy applies **or** the user explicitly asked for both
+   a passing build and a linked item. Otherwise linkage is informational and
+   never a reason to keep polling. When policy-required, also check that
+   evaluation's approval rather than inferring it from a listed item alone.
+5. **Confirm all evidence used for a terminal report.** Re-read PR revisions,
+   current required evaluations, and all linked-item references when step 4
+   requires linkage. If the revision, policy set, run association, relevant
+   evaluation state, or required linked-item reference set changed, discard the
+   candidate result and continue from step 2 within the original deadline.
+   A startup run's success is not evidence for a new push or expired validation.
+   Apply this confirmation to failed, partially succeeded, and canceled runs
+   too, so a superseded failure does not terminate the current monitor.
+6. **Evaluate the confirmed snapshot:**
+
+   | Condition | Action |
+   | --- | --- |
+   | All applicable required builds completed/succeeded and their evaluations approved; any required linkage satisfied | Report **requested checks passed**, not "PR ready". |
+   | Current run completed/failed | Stop immediately; report failure and relevant timeline/log evidence, even if another build is still running. |
+   | Current run completed/partiallySucceeded | Stop with **partially succeeded — required build not passed**; inspect warning/failing tasks and bounded logs. |
+   | Current run completed/canceled | Stop with **canceled — required build not passed**; include an observed cancellation reason, or say unavailable. |
+   | Required evaluation rejected/broken | Report the policy failure and its diagnostic; do not override it with a green run. |
+   | Completed run has missing/unknown result, or association is unverified | Report **unverified**, never success; name the missing evidence. |
+   | Builds passed but required linkage is missing/pending | Flag that condition. Keep polling only if the user asked to wait for both; otherwise report and stop. |
+   | Builds/evaluations still pending | Wait the poll interval and restart at step 2. |
+   | No applicable required builds | Report that explicitly, not vacuous build success; monitor linkage alone only if explicitly requested. |
+   | Deadline reached | Report timeout and last observed states with their timestamps; stop. |
+
+   Other branch policies can still block completion. This monitor does not
+   certify full PR readiness. On failure, show the failing stage/job and at most
+   ~15 relevant, redacted log lines as a root-cause hint, not a full log dump.
+7. **Report** using this shape:
 
    ```
    PR <id>: <title>  <link>
+   Observed: <timestamp>  Source: <commit>  Target: <commit>
+   Outcome: <requested checks passed | failed | partially succeeded | canceled | pending | unverified | timed out | PR closed | no required builds>
    Required builds:
-     <name>  <result>  <duration>  <link>
-   Work items: <id> <title>   (or: none linked yet)
+     <name>  <status>/<result>  policy: <state>  <duration>  <link>
+   Work items (<required | informational>): <id> <title>   (or: none linked yet)
    Next action: <one line>
    ```
 
-   Note whether the change still matches its stated goal at a glance. On a
-   failure, add the failing stage/job and the root-cause lines beneath the build
-   row.
+   On failure, add the stage/job and relevant log lines beneath its build row.
+   The title labels the requested change; build status does not verify that its
+   implementation matches that goal.
 
 ## Output length
 
@@ -130,14 +179,19 @@ closing summary of what you just said.
 If builds will take many minutes, do not sit in a tight sleep loop for the whole
 duration. In order of preference:
 
-- Poll a bounded number of times at the interval and, if still running, tell the
-  user you will re-check — then use a scheduled/self-paced wakeup if your runtime
-  offers one.
+- Poll a bounded number of times, then create a scheduled re-check if supported.
+  Persist the PR identity, request/linkage condition, interval, original start
+  time/deadline, and last observed revision/evaluation/run associations. Claim a
+  future re-check only after scheduling succeeds. On wake, restart at step 2;
+  do not resume polling only the old build IDs.
 - If your runtime has no scheduling facility, report the current status, state
   clearly that monitoring has paused, and offer to resume on request. Do not
   silently stop watching.
 
-Always keep a hard `max wait` cap and a clear terminal report.
+Always keep the original hard `max wait` cap. Cancel the monitor's schedule
+when the PR closes, a terminal report is produced, or the deadline expires.
+Use the runtime's documented creation API; a wakeup primitive for an existing
+loop does not itself create a monitor.
 
 ## Safety
 
@@ -149,6 +203,8 @@ Always keep a hard `max wait` cap and a clear terminal report.
 
 ## Stop condition
 
-Done when either (a) all required builds are terminal and work-item linkage is
-resolved (linked, or reported missing), or (b) `max wait` elapsed — in both
-cases a final status report with a next action is produced.
+Done when a confirmed terminal outcome in step 6 or PR closure is reported, or
+the original deadline expires. Pending builds continue at the configured
+interval; pending required linkage continues only when waiting for both was
+requested. Every stop has a final report and any monitor-owned schedule is
+canceled.

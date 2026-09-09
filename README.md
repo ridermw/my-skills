@@ -3,16 +3,17 @@
 Portable, self-contained **agent skills** for GitHub Copilot CLI, Claude Code,
 and Cursor.
 
-A "skill" is a single Markdown file (`SKILL.md`) with YAML frontmatter that an AI
-coding agent loads and follows. Every skill here is self-contained — one file, no
-external setup — so you can drop it into your tool's skills directory and go.
+A "skill" is a folder with a `SKILL.md` entry point and YAML frontmatter that an
+AI coding agent loads and follows. Larger skills include supporting Markdown
+files loaded on demand. Copy the whole folder, not just the entry point; the
+skill's own instructions travel together without a build or installation step.
 
 ## Skills
 
 | Skill | Author | What it does |
 | --- | --- | --- |
 | [`project-room`](skills/project-room/) | this repo | Turn a messy pile of sources into an inspectable "project room" — source inventory, duplicate/conflict/missing-context logs, per-source summaries, working brief — then draft a **grounded, source-cited deliverable** from the reviewed room. Preparation before drafting; stable source IDs; never overwrites originals or invents facts. Works with zero prior setup. |
-| [`adversarial-review`](skills/adversarial-review/) | this repo | Pressure-test an idea, plan, or change with genuinely independent reviewers instead of a generic pros/cons list. SPAR mode for decisions, Rubber Duck mode for code/plans; premortem pass, consensus-ranked findings, evidence standards, and honest disclosure when model diversity or subagents aren't available. Reviewer models are chosen by provider tier at runtime — no model name or version is hardcoded, so it doesn't rot as models ship. |
+| [`adversarial-review`](skills/adversarial-review/) | this repo | Pressure-test an idea, plan, or change with genuinely independent reviewers instead of a generic pros/cons list. SPAR mode for decisions, Rubber Duck mode for code/plans; premortem pass, consensus-ranked findings, evidence standards, and honest disclosure when model diversity or subagents aren't available. Selects frontier models dynamically from OpenAI, Anthropic and xAI, requests `xhigh` effort, and pins no model versions. Unavailable preferred providers reduce the reviewer count. |
 | [`sync-repos`](skills/sync-repos/) | this repo | Bulk-update a folder of git clones in one pass: fetch, fast-forward, and report what advanced, what's dirty, what diverged, and what errored. Deliberately safe — `fetch` and `--ff-only` only; never force, reset, stash, or push. |
 | [`ado-pr-build-monitor`](skills/ado-pr-build-monitor/) | this repo | Watch an Azure DevOps PR's build/policy gates to a terminal state, confirm work-item linkage, and on failure surface the failing stage plus root-cause log lines. Read-only: never comments, votes, or completes the PR. |
 | [`plan-exit-review`](skills/plan-exit-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Bounded, interactive engineering-readiness review of a plan before coding: scope challenge → architecture → code → tests → performance, with recommendation-first questions. Review only. |
@@ -59,13 +60,22 @@ the skill's description (e.g. "organize my sources", "sync all my repos",
 
 ### Requirements
 
-All skills are plain Markdown and work with any agent that loads `SKILL.md`
-files. Two have optional external dependencies:
+All skill folders contain Markdown instructions rather than executables.
+Operational workflows still need the corresponding environment capabilities:
 
 - `sync-repos` — needs `git` on `PATH` and an agent that can run shell commands.
+  Its reference loop uses Bash/POSIX utilities; native Windows hosts need Git
+  Bash/WSL or a faithful PowerShell translation. Fetch filters are preserved;
+  stale or unverifiable selected refs produce errors, not guessed sync results.
+  One captured checkout state governs reports and updates; changed state is
+  skipped, and behind-counts use the captured HEAD rather than a moving ref.
 - `ado-pr-build-monitor` — needs Azure DevOps access, via either the
   [Azure DevOps MCP server](https://github.com/microsoft/azure-devops-mcp) or the
-  Azure CLI with the `azure-devops` extension.
+  Azure CLI with the `azure-devops` extension. Logs require authenticated GET
+  access to the Build API when the connector does not expose them.
+- `plan-mega-review` — works locally on its own. Its optional independent pass
+  reuses an installed `adversarial-review` skill and available subagent tools;
+  missing optional capabilities are disclosed rather than guessed.
 
 ## Updating
 
@@ -83,6 +93,29 @@ loading everything up front is wasteful. Supporting files are markdown only: no
 executables, no install step, no machine-specific paths or private tools. A
 skill must work by copying its folder and nothing else. Be honest about
 guardrails. PRs welcome.
+
+Keep `description` within the Agent Skills specification's 1,024-character
+limit. `allowed-tools`, where used, is a space-separated scalar; its
+host-specific preapproval hints do not replace a skill's written safety rules.
+
+### Verification
+
+Repository-only regression coverage lives outside the distributable skill
+folders. With Python 3.9+, Git, and Bash:
+
+```bash
+python3 -B -m unittest discover -s tests -v
+```
+
+The suite executes the shipped shell examples in temporary local Git
+repositories and room fixtures, and checks scalar frontmatter constraints.
+Metadata regressions reject empty values and unquoted YAML flow collections
+while preserving plain and quoted scalars.
+It needs no network, Azure credentials, or third-party Python packages.
+`tests/skill_scenarios.json` supplies dry-run agent scenarios for the ADO,
+review-mode, and room-maintenance instructions; run them against the full
+affected skills before changing their workflow. These are separate from the
+automated suite and do not claim live Azure integration coverage.
 
 ## Credits & third-party skills
 

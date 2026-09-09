@@ -1,0 +1,59 @@
+{
+  "instructions": "Read the indicated repository skills and dry-run each scenario without external calls or file edits. Return ordered actions, the terminal report or next stop, and governing sections. These are workflow scenarios, not assertions satisfied by matching words in the skill.",
+  "scenarios": [
+    {
+      "id": "adversarial-preferred-provider-roster",
+      "skills": ["adversarial-review/SKILL.md"],
+      "input": "Run Rubber Duck on a substantive multi-file change. Three independent contexts and model overrides are available. The runtime exposes frontier OpenAI, Anthropic, and Google models supporting xhigh, but no xAI. State the execution path, provider roster, reviewer count, and planned dispatches. Repeat with the full preferred trio available, then with model/provider metadata, model overrides, and effort controls unavailable.",
+      "expected": "Select only OpenAI and Anthropic in the first case, dispatch two multi-model reviewers at xhigh, and disclose the reduced count; do not fill the third slot with Google or a duplicate. With the preferred trio available, dispatch three. With model control unavailable, dispatch the available independent contexts up to three as parallel-subagents and disclose unconfirmed model diversity and unsupported effort control without denying successful agent launches. Capability selection, dispatch, and execution disclosure must retain the selected and actually launched counts."
+    },
+    {
+      "id": "ado-stale-success",
+      "skills": ["ado-pr-build-monitor/SKILL.md"],
+      "input": "After many polls, the initially tracked runs have completed/succeeded and work item 42 is linked. PR metadata and policy evaluations were last fetched at startup for revision A. The user wants the final answer now. What reads and report do you perform?",
+      "expected": "Refresh PR revision and all current policy evaluations, replace stale run associations, and confirm current approvals before reporting requested checks passed. Never report PR readiness from cached run success alone."
+    },
+    {
+      "id": "ado-terminal-results",
+      "skills": ["ado-pr-build-monitor/SKILL.md"],
+      "input": "The current required run has completed/partiallySucceeded, no work item is linked, and no linkage policy applies. User requested only the build outcome. Repeat for completed/canceled, then completed/succeeded.",
+      "expected": "Report each distinct result without polling for optional linkage. Partially succeeded and canceled are not success. Successful current approvals may satisfy the requested checks without a work item."
+    },
+    {
+      "id": "ado-push-during-confirmation",
+      "skills": ["ado-pr-build-monitor/SKILL.md"],
+      "input": "Source revision A and required evaluation E/run 10 looked successful. The confirmation PR read now shows revision B, or E now points to queued run 11. The original deadline has two minutes remaining.",
+      "expected": "Discard the candidate success, rebuild current associations, and continue within the original deadline. Do not reset max wait, queue a run, or report run 10 as current."
+    },
+    {
+      "id": "ado-linkage-during-confirmation",
+      "skills": ["ado-pr-build-monitor/SKILL.md"],
+      "input": "The user explicitly requested passing builds and a linked work item, but no linkage policy applies. Step 4 listed item 42; it is then unlinked. Source/target revisions, required policy E, approved status, and succeeded run 10 are unchanged. Another work-item list returns no links. The original deadline has two minutes remaining.",
+      "expected": "Re-read all required linked-item references during confirmation, discard the stale success when the reference set changes, and continue within the original deadline. On the next stable snapshot, missing user-required linkage remains pending; never report requested checks passed from the old link."
+    },
+    {
+      "id": "mega-mode-order",
+      "skills": ["plan-mega-review/SKILL.md"],
+      "input": "The user asks for a mega review without specifying a mode. Give the first actions and first user decision. After REDUCTION is selected, describe error-map coverage for retained versus deferred codepaths.",
+      "expected": "Select and confirm a mode before taste calibration or other mode-specific analysis. In REDUCTION cover every retained fallible codepath; explicitly deferred paths belong only in the deferred scope."
+    },
+    {
+      "id": "review-only-scope-admission",
+      "skills": ["plan-exit-review/SKILL.md", "plan-mega-review/SKILL.md"],
+      "input": "At backlog triage the user picks C for a missing cache helper. The review deadline is ten minutes away. State the next artifact and action for both skills.",
+      "expected": "Include the helper in the proposed implementation-plan scope, review affected sections, and leave implementation files untouched. Do not write backlog entries unless A was approved."
+    },
+    {
+      "id": "room-current-summary",
+      "skills": ["project-room/SKILL.md", "project-room/refresh.md"],
+      "input": "S001-cache.md and prep_summary.json already exist. Source bytes are unchanged but corrected authority metadata requires a revised summary. A pre-refresh snapshot has been taken. State output paths, overwrite versus suffix behavior, and what the next Seek reads.",
+      "expected": "Update the existing canonical S001-cache.md and prep_summary.json in place after snapshotting them. Keep source ID and originals unchanged, mark review status needs_review before mutation, and have Seek read the canonical updated summary."
+    },
+    {
+      "id": "mega-optional-reviewer-policy",
+      "skills": ["plan-mega-review/SKILL.md"],
+      "input": "The user requests the optional independent pass. The host has subagents but adversarial-review is not installed. State whether you invent a model lineup, silently skip the pass, or disclose the missing dependency.",
+      "expected": "Disclose the unavailable optional policy, make no model-diversity claim, and continue the local review without inventing or silently substituting reviewers."
+    }
+  ]
+}
