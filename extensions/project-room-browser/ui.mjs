@@ -67,15 +67,9 @@ export function renderShell() {
 <title>Project room</title>
 <style id="host-theme-aliases">${HOST_THEME_CSS}</style>
 <style>
-/* THEME RULE -- do not violate:
-   Host variables (--background-color-default / --text-color-default) are read in JS
-   for DETECTION ONLY, to choose light vs dark. They must NEVER appear as token values.
-   Mixing a host-supplied background with our own hardcoded surfaces produced a light
-   page with dark controls and unreadable text. Each palette below is self-contained. */
-/* Alias layer.
-   Every colour below resolves to a semantic token from <style id="canvas-theme">,
-   which the server generates from the active theme. Nothing here invents a
-   colour, so the panel is whatever theme the user picked -- nothing else. */
+/* Application aliases resolve through the semantic layer in host-theme-aliases.
+   Keep host variables live so theme changes cascade without JavaScript.
+   Colour literals belong only in that layer's fallback palette. */
 :root {
   --cp-bg: var(--color-bg);
   --cp-bg-elevated: var(--color-bg);

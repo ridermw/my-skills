@@ -27,8 +27,9 @@ CLI **canvas** that browses a `project-room` folder (inventory, drift signals,
 Teams conversation coverage, files). It is JavaScript, not a portable skill, and
 is kept in this repo so it stays in step with the skill whose rules it reads.
 It uses private per-instance launch links, bounded in-room file reads, and
-separate capture/reconciliation signals. Its README includes the development
-test commands.
+separate capture/reconciliation signals. Coverage freshness uses current evidence;
+historical or ambiguous sources cannot certify it. Its README includes the
+development test commands.
 
 ## Install
 

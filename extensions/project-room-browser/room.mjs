@@ -5,6 +5,7 @@
 import { readdir, stat, realpath, lstat, open } from "node:fs/promises";
 import path from "node:path";
 import { parseChatIndex, teamsHealth, refreshTeamsHealth } from "./teams.mjs";
+import { isoDateTime } from "./dates.mjs";
 
 /* ---------------- CSV ---------------- */
 // Handles quoted fields, escaped quotes, and newlines inside quotes, which the
@@ -298,14 +299,8 @@ async function fileIdentity(root, rel) {
 }
 
 function daysSince(iso) {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-    const d = new Date(iso + "T00:00:00Z");
-    const then = d.getTime();
-    if (Number.isNaN(then)) return null;
-    // 2026-02-30 passes the regex but rolls over to March, so confirm the date
-    // round-trips before trusting any age computed from it.
-    if (d.toISOString().slice(0, 10) !== iso) return null;
-    return Math.floor((Date.now() - then) / 86400000);
+    const then = isoDateTime(iso);
+    return then == null ? null : Math.floor((Date.now() - then) / 86400000);
 }
 
 /**
@@ -322,7 +317,8 @@ function normaliseRow(r) {
 }
 
 export async function readRoom(roomPath) {
-    const root = path.resolve(roomPath);
+    const root = path.resolve(untilde(roomPath));
+    const now = Date.now();
     const s = await stat(root); // throws if missing — caller reports it
     if (!s.isDirectory()) throw new Error("Not a directory: " + root);
 
@@ -460,9 +456,11 @@ export async function readRoom(roomPath) {
     // record a runbook kept as "Historical (abandoned approach)" that still
     // contains app settings which are fatal if run, so lifecycle is a safety
     // signal here, not just bookkeeping.
-    const NOT_CURRENT = /superseded|historical|abandoned/i;
+    const NOT_CURRENT = /superseded|historical|abandoned|\bunknown\b/i;
+    const isNotCurrent = (s) =>
+        NOT_CURRENT.test(s.Lifecycle || "") || /^superseded$/i.test((s.Authority || "").trim());
     const notCurrent = sources
-        .filter((s) => NOT_CURRENT.test(s.Lifecycle || "") || /^superseded$/i.test((s.Authority || "").trim()))
+        .filter(isNotCurrent)
         .map((s) => ({
             id: s["Source ID"],
             path: s.Path,
@@ -497,7 +495,7 @@ export async function readRoom(roomPath) {
         const tokenise = (s) =>
             String(s || "")
                 .toLowerCase()
-                .split(/[^a-z0-9]+/)
+                .split(/[^\p{L}\p{N}]+/u)
                 .filter((w) => w.length > 3 && !["with", "team", "weekly", "sync", "chat", "meeting"].includes(w));
         const counts = new Map();
         for (const c of convs) for (const w of new Set(tokenise(c.name))) counts.set(w, (counts.get(w) || 0) + 1);
@@ -505,40 +503,59 @@ export async function readRoom(roomPath) {
         const registered = new Set();
         for (const c of convs) for (const s of c.sourceIds || []) registered.add(String(s));
 
-        const out = new Map();
-        for (const c of convs) {
-            const distinctive = [...new Set(tokenise(c.name))].filter((w) => counts.get(w) === 1);
-            if (!distinctive.length) continue;
-            for (const s of sources) {
-                const id = String(s["Source ID"] || "");
-                if (!id || registered.has(id)) continue;
-                const blob = ((s.Path || "") + " " + (s["Source type"] || "")).toLowerCase();
-                if (!CONVERSATION_ARTIFACT.test(blob)) continue;
-                const tokens = new Set(tokenise(blob));
-                if (!distinctive.some((w) => tokens.has(w))) continue;
-                // Only newer material changes the staleness picture.
-                if (c.lastCaptured && !(String(s.Date || "") > c.lastCaptured)) continue;
-                if (!out.has(c.index)) out.set(c.index, []);
-                out.get(c.index).push({ id, date: s.Date, path: s.Path, type: s["Source type"] });
+        const matchers = convs.map((c) => ({
+            conversation: c,
+            distinctive: [...new Set(tokenise(c.name))].filter((w) => counts.get(w) === 1),
+        }));
+        const byConversation = new Map();
+        const attributionConflicts = [];
+        const recencySources = new Set();
+        for (const s of sources) {
+            const id = String(s["Source ID"] || "");
+            if (!id || registered.has(id)) continue;
+            const blob = (s.Path || "") + " " + (s["Source type"] || "");
+            if (!CONVERSATION_ARTIFACT.test(blob)) continue;
+            const tokens = new Set(tokenise(blob));
+            const candidates = matchers
+                .filter(({ distinctive }) => distinctive.some((w) => tokens.has(w)))
+                .map(({ conversation }) => conversation);
+            const source = { id, date: s.Date ?? null, path: s.Path ?? null, type: s["Source type"] ?? null };
+            if (candidates.length === 1) {
+                const [c] = candidates;
+                if (!byConversation.has(c.index)) byConversation.set(c.index, []);
+                byConversation.get(c.index).push(source);
+                if (!isNotCurrent(s)) recencySources.add(source);
+            } else if (candidates.length > 1) {
+                attributionConflicts.push({
+                    source,
+                    candidates: candidates.map((c) => ({ index: c.index, name: c.name, chatId: c.chatId })),
+                });
             }
         }
-        return out;
+        return { byConversation, attributionConflicts, recencySources };
     }
 
     try {
         const idx = chatText != null ? parseChatIndex(chatText) : null;
         if (chatText != null && !idx) throw new Error("Invalid chat index: no parseable conversations");
         if (idx) {
-            teams = { rel: chatRel, ...teamsHealth(idx) };
+            teams = { rel: chatRel, ...teamsHealth(idx, { now }) };
             const extra = unregisteredCaptures(teams.conversations);
+            teams.attributionConflicts = extra.attributionConflicts;
             for (const c of teams.conversations) {
-                c.unregistered = extra.get(c.index) || [];
-                // A newer unregistered capture means the index's own date, and
-                // therefore the staleness verdict, cannot be trusted.
-                if (c.unregistered.length) {
-                    c.staleDateDisputed = true;
-                    c.isStale = false;
-                }
+                c.unregistered = extra.byConversation.get(c.index) || [];
+                c.attributionConflicts = extra.attributionConflicts.filter(
+                    (conflict) => conflict.candidates.some((candidate) => candidate.index === c.index)
+                );
+                const last = isoDateTime(c.lastCaptured);
+                // Membership gaps do not prove newer coverage; only a valid,
+                // non-future date on an unambiguous source can dispute the index.
+                c.staleDateDisputed = c.identityConflicts.length === 0 && last != null &&
+                    c.unregistered.some((source) => {
+                        const captured = isoDateTime(source.date);
+                        return extra.recencySources.has(source) && captured != null && captured <= now && captured > last;
+                    });
+                if (c.staleDateDisputed) c.isStale = false;
             }
             refreshTeamsHealth(teams);
         }

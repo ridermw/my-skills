@@ -80,6 +80,14 @@ All notable changes to the skills in this repo.
   reject rollover dates, and keep native Windows folder/breadcrumb targets
   intact. Inventory attribution now compares complete words and identifiers
   rather than suppressing coverage warnings on substring collisions.
+- **`project-room-browser` evidence and interaction follow-up (#7)** — keep
+  dynamic context inside every generated prompt's data boundary, preserve the
+  room's Source ID format, and select exact IDs from conversation chips. Retain
+  keyboard focus across tab changes and count each inbox file only once.
+  Coverage age uses effective current captures, keeps unregistered captures
+  visible, and rejects ambiguous attribution or unverified dates as freshness
+  evidence. Recognize Unicode conversation names, tilde room paths, and unknown
+  lifecycle warnings; remove obsolete theme-catalogue comments.
 
 ### Added
 - **Repository-only regression coverage** — real local Git and room fixtures

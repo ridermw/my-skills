@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { browseDir, readRoom, readRoomBytes, readRoomFile } from "../extensions/project-room-browser/room.mjs";
 import * as roomModule from "../extensions/project-room-browser/room.mjs";
+import { sweepPlan } from "../extensions/project-room-browser/teams.mjs";
 import { makeRoom } from "./helpers/canvas-fixture.mjs";
 
 const exec = promisify(execFile);
@@ -750,3 +751,200 @@ test("browseDir provides native root-to-target breadcrumbs for a real fixture di
     assert.equal(result.parent, base);
     assert.equal(result.isRoom, true);
 });
+
+async function indexedConversations(t, { names = ["Alpha chat"], sources = [] } = {}) {
+    const { root } = await fixture(t);
+    const sections = ["# Chat index"];
+    const rows = ["Source ID,Path,Source type,Date,Current or superseded,Authority"];
+    for (const [i, name] of names.entries()) {
+        const id = "S" + String(i + 1).padStart(3, "0");
+        const rel = `00_originals/registered-${i + 1}.json`;
+        await put(root, rel, "{}");
+        rows.push(`${id},${rel},chat,2020-02-01,current,authoritative`);
+        sections.push(
+            `## ${i + 1}. ${name}`, `**chat_id:** \`19:fixture-${i + 1}\``, "",
+            "| Source | File | Captured | Complete |", "| --- | --- | --- | --- |",
+            `| ${id} current | ${rel} | 2020-02-01 | complete |`, "",
+        );
+    }
+    for (const source of sources) {
+        await put(root, source.path, "Fixture capture\n");
+        rows.push([
+            source.id, source.path, source.type || "transcript", source.date || "",
+            source.lifecycle ?? "current", source.authority ?? "authoritative",
+        ].join(","));
+    }
+    await put(root, "02_inventory/chat-index.md", sections.join("\n"));
+    await put(root, "02_inventory/source_inventory.csv", rows.join("\n"));
+    return { root, index: sections.join("\n") };
+}
+
+test("ambiguous multi-name inventory sources preserve both stale verdicts and expose attribution conflicts", async (t) => {
+    const source = {
+        id: "MEMO-S900", path: "00_originals/alpha-beta-transcript.md",
+        date: new Date().toISOString().slice(0, 10), type: "transcript",
+    };
+    const { root } = await indexedConversations(t, { names: ["Alpha chat", "Beta chat"], sources: [source] });
+    const { teams } = await readRoom(root);
+    assert.ok(teams.conversations.every((c) => c.unregistered.length === 0));
+    const conflict = {
+        source,
+        candidates: [
+            { index: 1, name: "Alpha chat", chatId: "19:fixture-1" },
+            { index: 2, name: "Beta chat", chatId: "19:fixture-2" },
+        ],
+    };
+    assert.deepEqual(teams.attributionConflicts, [conflict]);
+    for (const c of teams.conversations) {
+        assert.deepEqual(c.attributionConflicts, [conflict]);
+        assert.equal(c.staleDateDisputed, false);
+        assert.equal(c.isStale, true);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.needsRecapture, true);
+    }
+    assert.equal(teams.counts.unregistered, 0);
+    assert.equal(teams.counts.attributionConflicts, 1);
+    assert.equal(teams.counts.stale, 2);
+    assert.equal(teams.counts.needsReconciliation, 2);
+    assert.equal(sweepPlan(teams).targets.length, 2);
+});
+
+test("unique inventory attribution cannot resolve an existing conversation identity conflict", async (t) => {
+    const source = {
+        id: "S900", path: "00_originals/alpha-transcript.md",
+        date: new Date().toISOString().slice(0, 10), type: "transcript",
+    };
+    const { root, index } = await indexedConversations(t, { names: ["Alpha chat", "Beta chat"], sources: [source] });
+    await put(root, "02_inventory/chat-index.md", index + "\n## Quick map\n"
+        + "| # | Conversation | chat_id | Sources | Fully captured? |\n"
+        + "| --- | --- | --- | --- | --- |\n"
+        + "| 2 | Alpha chat | `19:fixture-1` | S900 | complete |\n");
+    const { teams } = await readRoom(root);
+    assert.deepEqual(teams.conversations[0].unregistered, [source]);
+    assert.equal(teams.identityConflicts.length, 1);
+    assert.equal(teams.conversations[0].staleDateDisputed, false);
+    assert.equal(teams.conversations[0].isStale, true);
+    assert.equal(teams.counts.stale, 2);
+});
+
+test("an unregistered date cannot prove newer coverage when the effective capture date is unknown", async (t) => {
+    const source = {
+        id: "S900", path: "00_originals/alpha-transcript.md",
+        date: new Date().toISOString().slice(0, 10), type: "transcript",
+    };
+    const { root, index } = await indexedConversations(t, { sources: [source] });
+    await put(root, "02_inventory/chat-index.md", index.replace("2020-02-01", "2020-02-30"));
+    const { teams } = await readRoom(root);
+    const [c] = teams.conversations;
+    assert.deepEqual(c.unregistered, [source]);
+    assert.equal(c.lastCaptured, null);
+    assert.equal(c.unknownCaptureDate, true);
+    assert.equal(c.staleDateDisputed, false);
+    assert.equal(c.needsReconciliation, true);
+});
+
+for (const { name, date, disputed } of [
+    { name: "older", date: "2020-01-31", disputed: false },
+    { name: "equal", date: "2020-02-01", disputed: false },
+    { name: "undated", date: "", disputed: false },
+    { name: "rollover", date: "2020-02-30", disputed: false },
+    { name: "malformed", date: "not-a-date", disputed: false },
+    { name: "future", date: "2099-01-01", disputed: false },
+    { name: "valid newer", date: new Date().toISOString().slice(0, 10), disputed: true },
+]) {
+    test(`uniquely attributed ${name} inventory captures remain gaps with date-specific staleness evidence`, async (t) => {
+        const source = { id: "MEMO-S900", path: "00_originals/alpha-transcript.md", date, type: "transcript" };
+        const { root } = await indexedConversations(t, { sources: [source] });
+        const { teams } = await readRoom(root);
+        const [c] = teams.conversations;
+        assert.deepEqual(c.unregistered, [source]);
+        assert.equal(c.lastCaptured, "2020-02-01");
+        assert.equal(c.staleDateDisputed, disputed);
+        assert.equal(c.isStale, !disputed);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.hasProblem, true);
+        assert.equal(teams.counts.unregistered, 1);
+        assert.equal(teams.counts.stale, disputed ? 0 : 1);
+        assert.equal(teams.counts.needsReconciliation, 1);
+        assert.equal(sweepPlan(teams).targets.length, disputed ? 0 : 1);
+    });
+}
+
+for (const { lifecycle, authority, disputed } of [
+    { lifecycle: "Historical (abandoned approach)", authority: "supporting", disputed: false },
+    { lifecycle: "likely superseded", authority: "authoritative", disputed: false },
+    { lifecycle: "unknown", authority: "authoritative", disputed: false },
+    { lifecycle: "current", authority: "superseded", disputed: false },
+    { lifecycle: "current", authority: "authoritative", disputed: true },
+    { lifecycle: "current", authority: "unknown", disputed: true },
+]) {
+    test(`inventory recency evidence respects lifecycle ${lifecycle} and authority ${authority}`, async (t) => {
+        const source = {
+            id: "S900", path: "00_originals/alpha-transcript.md",
+            date: new Date().toISOString().slice(0, 10), type: "transcript",
+        };
+        const { root } = await indexedConversations(t, { sources: [{ ...source, lifecycle, authority }] });
+        const room = await readRoom(root);
+        const [c] = room.teams.conversations;
+        assert.deepEqual(c.unregistered, [source]);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.staleDateDisputed, disputed);
+        assert.equal(c.isStale, !disputed);
+        assert.equal(c.lastCaptured, "2020-02-01");
+        assert.equal(room.teams.counts.unregistered, 1);
+        assert.equal(room.teams.counts.stale, disputed ? 0 : 1);
+        assert.equal(room.health.notCurrent.some((row) => row.id === "S900"), !disputed);
+        assert.equal(sweepPlan(room.teams).targets.length, disputed ? 0 : 1);
+    });
+}
+
+test("Unicode conversation tokens attribute only the exact distinctive inventory source", async (t) => {
+    const source = {
+        id: "S900", path: "00_originals/\u9879\u76ee\u51e4\u51f0-transcript.md",
+        date: new Date().toISOString().slice(0, 10), type: "transcript",
+    };
+    const { root } = await indexedConversations(t, {
+        names: ["\u9879\u76ee\u51e4\u51f0", "\u9879\u76ee\u767d\u9e6d"], sources: [source],
+    });
+    const { teams } = await readRoom(root);
+    assert.deepEqual(teams.conversations[0].unregistered, [source]);
+    assert.deepEqual(teams.conversations[1].unregistered, []);
+    assert.equal(teams.conversations[0].staleDateDisputed, true);
+    assert.equal(teams.conversations[1].isStale, true);
+    assert.deepEqual(teams.attributionConflicts, []);
+});
+
+test("readRoom resolves tilde roots consistently with browseDir in an isolated home", async (t) => {
+    const { base, root, outside } = await fixture(t);
+    await put(base, "room.yaml", "project: Isolated home\n");
+    const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", `
+        import assert from "node:assert/strict";
+        import { browseDir, readRoom } from ${JSON.stringify(moduleUrl)};
+        for (const [input, expectedName] of [["~/room", "Fixture"], ["~", "Isolated home"]]) {
+            const listing = await browseDir(input);
+            let room;
+            await assert.doesNotReject(async () => { room = await readRoom(input); });
+            assert.equal(room.root, listing.path);
+            assert.equal(room.name, expectedName);
+        }
+        assert.equal((await readRoom("~/room")).root, process.argv[1]);
+        console.log("isolated tilde roots");
+    `, root], { env: { ...process.env, HOME: base }, cwd: outside, timeout: 30000 });
+    assert.equal(stdout.trim(), "isolated tilde roots");
+});
+
+for (const lifecycleColumn of ["Lifecycle", "Current or superseded"]) {
+    test(`unknown ${lifecycleColumn} belongs in notCurrent independently of Authority`, async (t) => {
+        const { root } = await fixture(t);
+        for (const id of ["S001", "S002", "S003"]) await put(root, `00_originals/${id}.md`, "Fixture\n");
+        await put(root, "02_inventory/source_inventory.csv",
+            `Source ID,Path,Authority,${lifecycleColumn}\n`
+            + "S001,00_originals/S001.md,authoritative,unknown\n"
+            + "S002,00_originals/S002.md,unknown,current\n"
+            + "S003,00_originals/S003.md,supporting,unknown (awaiting review)\n");
+        const room = await readRoom(root);
+        assert.deepEqual(room.health.notCurrent.map((source) => source.id), ["S001", "S003"]);
+        assert.equal(room.sources[1].Authority, "unknown");
+        assert.equal(room.sources[1].Lifecycle, "current");
+    });
+}

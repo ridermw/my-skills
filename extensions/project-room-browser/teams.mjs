@@ -14,6 +14,7 @@
  */
 
 import { untrustedBlock, untrustedValue } from "./prompt-data.mjs";
+import { isoDateTime } from "./dates.mjs";
 
 const RX = {
     heading: /^##\s+(.+?)\s*$/,
@@ -280,7 +281,7 @@ export function parseChatIndex(text) {
             match.type = match.type || q.type;
             match.fullyCaptured = q.fullyCaptured;
             match.capturedNote = q.capturedNote;
-            if (!match.captures.length && q.sourceIds.length) match.quickSourceIds = q.sourceIds;
+            if (q.sourceIds.length) match.quickSourceIds = q.sourceIds;
         } else {
             conversations.push({
                 index: q.ordinal != null && !byOrdinal ? q.ordinal :
@@ -368,12 +369,6 @@ function inferType(c) {
     return "Chat";
 }
 
-function isoDateTime(iso) {
-    if (typeof iso !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-    const t = Date.parse(iso + "T00:00:00Z");
-    return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === iso ? t : null;
-}
-
 function isFutureDate(s, now) {
     const m = String(s || "").match(/\b\d{4}-\d{2}-\d{2}\b/);
     const t = isoDateTime(m?.[0]);
@@ -408,18 +403,20 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         return null;
     };
     const conversations = index.conversations.map((c) => {
-        const dates = c.captures.map((x) => x.captured).filter((date) => isoDateTime(date) != null).sort();
-        const last = dates.length ? dates[dates.length - 1] : null;
-        const age = daysSince(last, now);
         // A capture that was superseded by a later, complete capture is history,
         // not an open failure. Only the effective current captures can fail.
         // Counting every historical partial made threads that had already been
         // re-captured show up as needing a sweep.
         const superseded = new Set(c.captures.filter((x) => x.isSuperseded).map((x) => x.sourceId));
-        const hasCurrentComplete = c.captures.some((x) => x.isCurrent && x.complete === true);
+        const hasCurrentComplete = c.captures.some(
+            (x) => x.isCurrent && x.complete === true && !superseded.has(x.sourceId)
+        );
         const effectiveCaptures = c.captures.filter(
             (x) => !superseded.has(x.sourceId) && !(hasCurrentComplete && !x.isCurrent)
         );
+        const dates = effectiveCaptures.map((x) => x.captured).filter((date) => isoDateTime(date) != null).sort();
+        const last = dates.length ? dates[dates.length - 1] : null;
+        const age = daysSince(last, now);
         const incomplete = effectiveCaptures.filter((x) => x.complete === false);
         const missingArtifacts = [];
         for (const occ of c.occurrences) {
@@ -442,6 +439,8 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         const authoredIncomplete = c.fullyCaptured === false;
         return {
             ...c,
+            effectiveCaptures,
+            attributionConflicts: c.attributionConflicts || [],
             lastCaptured: last,
             daysSinceCapture: age,
             authoredIncomplete,
@@ -462,6 +461,7 @@ export function teamsHealth(index, { staleAfterDays = 14, now = Date.now() } = {
         staleAfterDays,
         knownGaps: index.knownGaps,
         identityConflicts: index.identityConflicts || [],
+        attributionConflicts: index.attributionConflicts || [],
     });
 }
 
@@ -473,17 +473,20 @@ export function refreshTeamsHealth(health) {
     if (!health) return null;
     const { conversations } = health;
     for (const c of conversations) {
-        const hasKnownSource = (c.sourceIds || []).length > 0 ||
-            (c.quickSourceIds || []).length > 0 || (c.unregistered || []).length > 0;
-        c.noCaptures = c.captures.length === 0 && !hasKnownSource;
-        c.indexDetailGap = c.captures.length === 0 && hasKnownSource;
+        c.effectiveCaptureCount = c.effectiveCaptures.length;
+        const recordedIds = new Set(c.captures.map((x) => x.sourceId));
+        const hasUnindexedSource = [...(c.sourceIds || []), ...(c.quickSourceIds || [])]
+            .some((id) => !recordedIds.has(id)) || (c.unregistered || []).length > 0;
+        c.noCaptures = c.effectiveCaptureCount === 0 && !hasUnindexedSource;
+        c.indexDetailGap = c.effectiveCaptureCount === 0 && hasUnindexedSource;
         c.needsRecapture = !!(
             c.noCaptures || c.authoredIncomplete || (c.isStale && !c.staleDateDisputed) ||
             c.incompleteCaptures.length || c.missingArtifacts.length
         );
         c.needsReconciliation = !!(
             c.staleDateDisputed || (c.unregistered || []).length ||
-            (c.identityConflicts || []).length || c.indexDetailGap || c.unknownCompleteness || c.unknownCaptureDate
+            (c.identityConflicts || []).length || (c.attributionConflicts || []).length ||
+            c.indexDetailGap || c.unknownCompleteness || c.unknownCaptureDate
         );
         c.hasProblem = c.needsRecapture || c.needsReconciliation;
     }
@@ -492,6 +495,7 @@ export function refreshTeamsHealth(health) {
         ...health.counts,
         conversations: conversations.length,
         captures: conversations.reduce((n, c) => n + c.captures.length, 0),
+        effectiveCaptures: conversations.reduce((n, c) => n + c.effectiveCaptureCount, 0),
         stale: conversations.filter((c) => c.isStale && !c.staleDateDisputed).length,
         noCaptures: count("noCaptures"),
         authoredIncomplete: count("authoredIncomplete"),
@@ -502,6 +506,7 @@ export function refreshTeamsHealth(health) {
         unknownCompleteness: count("unknownCompleteness"),
         unknownCaptureDate: count("unknownCaptureDate"),
         identityConflicts: (health.identityConflicts || []).length,
+        attributionConflicts: (health.attributionConflicts || []).length,
         needsRecapture: count("needsRecapture"),
         needsReconciliation: count("needsReconciliation"),
         hasProblem: count("hasProblem"),

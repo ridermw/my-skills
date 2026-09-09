@@ -600,7 +600,7 @@ for (const captured of ["2026-02-30", "2026-02-29", "2026-04-31"]) {
 
 test("invalid later capture dates do not hide the latest valid date", () => {
     const health = healthFor([
-        "| S001 | old.json | 2026-08-01 | full | complete |",
+        "| S001 current | old.json | 2026-08-01 | full | complete |",
         "| S002 current | invalid.json | 2026-09-31 | full | complete |",
     ]);
     const [c] = health.conversations;
@@ -718,3 +718,95 @@ for (const evidence of ["partial", "artifact"]) {
         assert.equal(data.targets[0].reasons.missingArtifacts.total, evidence === "artifact" ? 1 : 0);
     });
 }
+
+test("effective capture recency ignores a more recent superseded capture", () => {
+    const health = healthFor([
+        "| S001 current | current.json | 2026-08-01 | full | complete |",
+        "| S002 superseded | history.json | 2026-09-08 | full | complete |",
+    ]);
+    const [c] = health.conversations;
+    assert.equal(c.lastCaptured, "2026-08-01");
+    assert.equal(c.daysSinceCapture, 38);
+    assert.equal(c.isStale, true);
+    assert.deepEqual(c.effectiveCaptures.map((x) => x.sourceId), ["S001"]);
+    assert.equal(c.effectiveCaptureCount, 1);
+    assert.equal(c.captures.length, 2);
+    assert.deepEqual(c.sourceIds, ["S001", "S002"]);
+    assert.equal(health.counts.captures, 2);
+    assert.equal(health.counts.effectiveCaptures, 1);
+    assert.deepEqual(sweepData(teams.sweepPlan(health).text).data.targets[0].reasons.stale,
+        { lastCaptured: "2026-08-01", daysSinceCapture: 38 });
+});
+
+test("a superseded capture marked current cannot suppress effective partial evidence", () => {
+    const health = healthFor([
+        "| S001 | current.json | 2026-08-01 | first page | partial |",
+        "| S002 current superseded | history.json | 2026-09-08 | full | complete |",
+    ]);
+    const [c] = health.conversations;
+    assert.deepEqual(c.incompleteCaptures.map((x) => x.sourceId), ["S001"]);
+    assert.deepEqual(c.effectiveCaptures.map((x) => x.sourceId), ["S001"]);
+    assert.equal(c.lastCaptured, "2026-08-01");
+    assert.equal(c.isStale, true);
+    assert.deepEqual(teams.sweepPlan(health).targets, [c]);
+});
+
+test("history-only captures retain display metadata without certifying current coverage", () => {
+    const health = healthFor(["| S001 superseded | history.json | 2026-09-08 | full | complete |"]);
+    const [c] = health.conversations;
+    assert.equal(c.lastCaptured, null);
+    assert.equal(c.daysSinceCapture, null);
+    assert.equal(c.isStale, false);
+    assert.equal(c.captures.length, 1);
+    assert.deepEqual(c.sourceIds, ["S001"]);
+    assert.deepEqual(c.effectiveCaptures, []);
+    assert.equal(c.effectiveCaptureCount, 0);
+    assert.equal(c.noCaptures, true);
+    assert.equal(c.indexDetailGap, false);
+    assert.equal(c.needsRecapture, true);
+    assert.equal(c.hasProblem, true);
+    assert.equal(health.counts.captures, 1);
+    assert.equal(health.counts.effectiveCaptures, 0);
+    assert.equal(health.counts.noCaptures, 1);
+    assert.deepEqual(teams.sweepPlan(health).targets, [c]);
+
+    c.unregistered = [{ id: "S002", path: "unindexed.json" }];
+    teams.refreshTeamsHealth(health);
+    assert.equal(c.effectiveCaptureCount, 0);
+    assert.equal(c.captures.length, 1);
+    assert.equal(c.noCaptures, false);
+    assert.equal(c.indexDetailGap, true);
+    assert.equal(c.needsRecapture, false);
+    assert.equal(c.needsReconciliation, true);
+    assert.equal(health.counts.noCaptures, 0);
+    assert.equal(health.counts.indexDetailGap, 1);
+});
+
+test("quick-map sources missing from historical detail rows remain an index-detail gap", () => {
+    const health = healthFor(["| S001 superseded | history.json | 2026-09-08 | full | complete |"], {
+        quickRows: [`| 1 | Alpha thread | \`${alphaId}\` | Group | S001 S002 | complete |`],
+    });
+    const [c] = health.conversations;
+    assert.deepEqual(c.sourceIds, ["S001", "S002"]);
+    assert.equal(c.effectiveCaptureCount, 0);
+    assert.equal(c.noCaptures, false);
+    assert.equal(c.indexDetailGap, true);
+    assert.equal(c.needsReconciliation, true);
+    assert.deepEqual(teams.sweepPlan(health).targets, []);
+});
+
+test("ineffective valid history cannot supply a missing effective capture date", () => {
+    const health = healthFor([
+        "| S001 | history.json | 2026-09-08 | full | complete |",
+        "| S002 current | current.json | | full | complete |",
+    ]);
+    const [c] = health.conversations;
+    assert.equal(c.lastCaptured, null);
+    assert.equal(c.daysSinceCapture, null);
+    assert.equal(c.unknownCaptureDate, true);
+    assert.equal(c.effectiveCaptureCount, 1);
+    assert.equal(c.noCaptures, false);
+    assert.equal(c.needsReconciliation, true);
+    assert.equal(c.needsRecapture, false);
+    assert.equal(c.hasProblem, true);
+});

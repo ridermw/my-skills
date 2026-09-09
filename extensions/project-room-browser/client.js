@@ -228,7 +228,8 @@ function render() {
     const d = DATA;
     const hl = d.health;
     const nFlags =
-        hl.staleRenders.length + hl.missingOnDisk.length + (hl.inboxPending || []).length + hl.uninventoried.length;
+        hl.staleRenders.length + hl.missingOnDisk.length +
+        new Set([...(hl.inboxPending || []), ...hl.uninventoried]).size;
     $("#app").innerHTML = `
     <nav class="rail" role="tablist" aria-label="Room views">
       <div class="room">
@@ -236,7 +237,7 @@ function render() {
         <div class="sub">${h(d.room.status || "project room")}</div>
       </div>
       <button class="nav" type="button" role="tab" id="tab-overview" aria-controls="p-overview" data-v="overview" aria-selected="${VIEW === "overview"}" aria-current="${VIEW === "overview"}">
-        <span>Overview</span>${nFlags ? '<span class="n">' + nFlags + " flags</span>" : ""}</button>
+        <span>Overview</span>${nFlags ? '<span class="n">' + plural(nFlags, "flag") + "</span>" : ""}</button>
       <button class="nav" type="button" role="tab" id="tab-inventory" aria-controls="p-inventory" data-v="inventory" aria-selected="${VIEW === "inventory"}" aria-current="${VIEW === "inventory"}">
         <span>Sources</span><span class="n">${d.sources.length}</span></button>
       <button class="nav" type="button" role="tab" id="tab-review" aria-controls="p-review" data-v="review" aria-selected="${VIEW === "review"}" aria-current="${VIEW === "review"}">
@@ -261,11 +262,25 @@ function render() {
       <div class="pane ${VIEW === "teams" ? "on" : ""}" id="p-teams" role="tabpanel" aria-labelledby="tab-teams" tabindex="0"></div>
       <div class="pane ${VIEW === "files" ? "on" : ""}" id="p-files" role="tabpanel" aria-labelledby="tab-files" tabindex="0"></div>
     </div>`;
-    document.querySelectorAll(".rail .nav").forEach((b) => {
+    const tabs = [...document.querySelectorAll(".rail .nav")];
+    tabs.forEach((b, index) => {
+        b.tabIndex = b.dataset.v === VIEW ? 0 : -1;
         b.onclick = () => {
             VIEW = b.dataset.v;
             render();
-            announce(b.innerText.replace(/\s+/g, " ").trim() + " view");
+            const active = $("#tab-" + VIEW);
+            active.focus();
+            announce(active.innerText.replace(/\s+/g, " ").trim() + " view");
+        };
+        b.onkeydown = (event) => {
+            const movement = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+            let next;
+            if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = tabs.length - 1;
+            else if (event.key in movement) next = (index + movement[event.key] + tabs.length) % tabs.length;
+            else return;
+            event.preventDefault();
+            tabs[next].click();
         };
     });
     const sw = $("#switchroom");
@@ -681,6 +696,7 @@ function renderInventory() {
     q.oninput = debounce(() => {
         const pos = q.selectionStart;
         Q = q.value;
+        delete FILTERS["Source ID"];
         renderInventory();
         const nq = $("#q");
         nq.focus();
@@ -974,7 +990,8 @@ function q(v, max = 300) {
         .replace(/^-{3,}|-{3,}$/g, "")
         .trim();
     const cut = s.length > max ? s.slice(0, max) + "\u2026" : s;
-    return JSON.stringify(cut);
+    return JSON.stringify(cut).replace(/[\u0080-\u009f\u2028\u2029]/g,
+        (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 }
 
 function convLines(c) {
@@ -996,10 +1013,11 @@ function buildIndexPrompt(d) {
     const pending = (d.health.inboxPending || []).slice(0, 40);
     return [
         "Run the project-room skill's Index operation (index.md) on this room.",
-        "Room folder: " + q(d.root),
         "",
         UNTRUSTED_BANNER,
         "room: " + q(d.name),
+        "room folder: " + q(d.root),
+        d.teams ? "conversation index: " + q(d.teams.rel) : "",
         "inventory rows: " + d.sources.length,
         "files awaiting triage in 01_inbox: " + pending.length,
         ...pending.map((p) => "  " + q(p)),
@@ -1007,8 +1025,7 @@ function buildIndexPrompt(d) {
         "",
         "Follow index.md exactly. Do not draft anything, and STOP at the review gate.",
         d.teams
-            ? "This room keeps a conversation index (" + q(d.teams.rel) +
-              "), so register any chat/meeting capture there as well as in the inventory."
+            ? "Register chat/meeting captures in the listed conversation index as well as the inventory."
             : "",
     ]
         .filter(Boolean)
@@ -1027,10 +1044,10 @@ function buildRefreshPrompt(d) {
         facts.push(d.teams.counts.unregistered + " conversation capture(s) in the inventory but absent from the chat index");
     return [
         "Run the project-room skill's Refresh operation (refresh.md) on this room.",
-        "Room folder: " + q(d.root),
         "",
         UNTRUSTED_BANNER,
         "room: " + q(d.name),
+        "room folder: " + q(d.root),
         ...(facts.length ? facts.map((f) => "- " + q(f)) : ["- no drift signals detected by the browser"]),
         UNTRUSTED_END,
         "",
@@ -1050,6 +1067,7 @@ function buildReconcilePrompt(c, roomName, root) {
         "index says last captured: " + q(c.lastCaptured),
         "known source IDs: " + q((c.sourceIds || []).join(", ")),
         "identity conflicts: " + q(JSON.stringify(c.identityConflicts || []), 1200),
+        "attribution conflicts: " + q(JSON.stringify(c.attributionConflicts || []), 1200),
         ...(c.unregistered || []).map(
             (u) => "unregistered source: " + q(u.id) + "  date: " + q(u.date) + "  type: " + q(u.type) + "  path: " + q(u.path)
         ),
@@ -1065,10 +1083,11 @@ function buildReconcilePrompt(c, roomName, root) {
 
 function buildRecapturePrompt(c, roomName, root) {
     return [
-        "Re-capture a Teams conversation for the project room " + q(roomName) + ".",
-        "Room folder: " + q(root),
+        "Re-capture a Teams conversation for the project room described below.",
         "",
         UNTRUSTED_BANNER,
+        "room: " + q(roomName),
+        "room folder: " + q(root),
         ...convLines(c),
         UNTRUSTED_END,
         "",
@@ -1077,17 +1096,18 @@ function buildRecapturePrompt(c, roomName, root) {
         "- Page through every result: if a response reports more results, follow the nextLink and merge all pages.",
         "- Record the complete flag from the LAST page, not the first.",
         "- Capture the artifacts this room tracks: verbatim transcript, Copilot AI insights, M365 recap, plus any shared files, screenshots and diagrams posted in the thread.",
-        "- Write new captures to 01_inbox, then update 02_inventory/source_inventory.csv and 02_inventory/chat-index.md.",
-        "- Assign the next free S### id; never reuse or renumber an existing id.",
+        "- Write new captures to 01_inbox, then run the project-room skill's Index operation (index.md).",
+        "- Assign the next unused Source ID in this room's own format; never reuse or renumber an existing ID.",
     ].join("\n");
 }
 
 function buildNuggetPrompt(c, roomName, root) {
     return [
-        "Capture a decision or fact worth keeping from a Teams conversation into the project room " + q(roomName) + ".",
-        "Room folder: " + q(root),
+        "Capture a durable decision or fact from a Teams conversation for the project room described below.",
         "",
         UNTRUSTED_BANNER,
+        "room: " + q(roomName),
+        "room folder: " + q(root),
         "conversation: " + q(c.name) + (c.type ? "  type: " + q(c.type) : ""),
         c.chatId ? "chat_id: " + q(c.chatId) : "",
         UNTRUSTED_END,
@@ -1119,11 +1139,11 @@ function buildTaskPrompt(c, roomName, root) {
         "Create a task to bring a Teams thread back into coverage.",
         c.needsReconciliation ? "Reconcile the existing coverage records with index.md before collecting missing evidence." : "",
         "",
+        UNTRUSTED_BANNER,
         "Title: Re-capture the conversation named " + q(c.name) + " for room " + q(roomName),
         "Room folder: " + q(root),
         c.chatId ? "chat_id: " + q(c.chatId) : "",
         "",
-        UNTRUSTED_BANNER,
         "Why now (derived from room data):",
         ...(why.length ? why.map((w) => "- " + q(w)) : ["- routine refresh; no coverage gap recorded"]),
         UNTRUSTED_END,
@@ -1132,7 +1152,7 @@ function buildTaskPrompt(c, roomName, root) {
         "- The thread is captured through today, with every page followed.",
         "- Transcript, Copilot insights and recap are present for each meeting occurrence, or explicitly recorded as unavailable.",
         "- Shared files, screenshots and diagrams are saved into the room and inventoried.",
-        "- source_inventory.csv and chat-index.md both reflect the new capture.",
+        "- The project's Index operation records the capture in the room's configured inventory and conversation index.",
     ]
         .filter(Boolean)
         .join("\n");
@@ -1193,6 +1213,11 @@ async function renderTeams() {
               t.identityConflicts.length + " quick-map mapping(s) disagree with the detail sections. " +
               "Reconcile the index before relying on those coverage fields.</p></div>"
             : "") +
+        ((t.attributionConflicts || []).length
+            ? '<div class="flag warn" role="alert"><h3>Capture attribution needs review</h3><p>' +
+              t.attributionConflicts.length + " unregistered source(s) match multiple conversations. " +
+              "Reconcile their identity; these matches do not verify capture age.</p></div>"
+            : "") +
         '<section class="sec"><h3>Conversations</h3><div class="convs">' +
         cs.map((c) => convCard(c)).join("") +
         "</div></section>" +
@@ -1240,8 +1265,9 @@ async function renderTeams() {
     // existing overview -> inventory drill-down pattern.
     host.querySelectorAll("[data-src]").forEach((b) => {
         b.onclick = () => {
-            FILTERS = {};
+            FILTERS = { "Source ID": new Set([b.dataset.src]) };
             Q = b.dataset.src;
+            SEL = b.dataset.src;
             VIEW = "inventory";
             render();
         };
@@ -1253,14 +1279,18 @@ function convCard(c) {
     const tone = c.noCaptures || (c.isStale && !disputed) ? "bad" : c.hasProblem || disputed ? "warn" : "good";
     const when = c.lastCaptured && c.daysSinceCapture != null
         ? c.daysSinceCapture + " day" + (c.daysSinceCapture === 1 ? "" : "s") + " ago"
-        : c.noCaptures ? "none recorded" : "date unverified";
+        : c.noCaptures ? (c.captures.length ? "none current" : "none recorded") : "date unverified";
     const problems = [];
     for (const u of c.unregistered || [])
         problems.push(
-            "The inventory has " + u.id + " dated " + u.date + " (" + (u.type || "capture") +
-            ") for this thread, but the chat index does not list it. The date above is from the index, so it understates coverage."
+            "Inventory source " + u.id + " (" + (u.type || "capture") + ", date: " + (u.date || "unverified") +
+            ") is not listed in the chat index. Reconcile the records; registration alone does not establish complete current coverage."
         );
-    if (c.noCaptures) problems.push("No capture is recorded for this thread at all.");
+    if (disputed)
+        problems.push("A newer valid inventory capture date disputes the index age; reconcile coverage before relying on that age.");
+    if (c.noCaptures) problems.push(c.captures.length
+        ? "No effective current capture is recorded for this thread."
+        : "No capture is recorded for this thread at all.");
     if ((c.identityConflicts || []).length)
         problems.push("Conversation identity conflicts need reconciliation before quick-map coverage can be trusted.");
     if (c.indexDetailGap)
@@ -1269,8 +1299,11 @@ function convCard(c) {
         problems.push("Capture completeness is unconfirmed; reconcile it against the existing source evidence.");
     if (c.unknownCaptureDate)
         problems.push("Capture dates are unverified; reconcile them before relying on a coverage age.");
+    if ((c.attributionConflicts || []).length)
+        problems.push("Unregistered sources could match multiple conversations; reconcile their identity before changing coverage.");
     if (c.needsReconciliation && !(c.unregistered || []).length &&
-        !(c.identityConflicts || []).length && !c.indexDetailGap && !c.unknownCompleteness && !c.unknownCaptureDate)
+        !(c.identityConflicts || []).length && !(c.attributionConflicts || []).length &&
+        !c.indexDetailGap && !c.unknownCompleteness && !c.unknownCaptureDate)
         problems.push("Coverage details need reconciliation with the chat index.");
     if (c.authoredIncomplete)
         problems.push("The index marks this thread as not fully captured" + (c.capturedNote ? " \u2014 " + c.capturedNote : "") + ".");

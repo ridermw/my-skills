@@ -32,6 +32,12 @@ open the project-room canvas for ~/project-rooms/<room>
 | **Teams** | One card per *conversation*: cadence-aware coverage age, partial captures, missing artifacts, known gaps, and index reconciliation needs. Only actual capture gaps enter the sweep plan; disputed identities and incomplete index records stay visible without inventing missing captures. |
 | **Files** | Every file in the room, with markdown/CSV rendered and images previewed. |
 
+Conversation age uses effective current captures, while historical captures stay
+visible. Unregistered captures remain reconciliation work regardless of age.
+Ambiguous matches never verify coverage; only a valid, non-future date from a
+uniquely attributed current inventory capture can dispute the index's age.
+Source chips select the complete Source ID, not a substring match.
+
 ## Theming
 
 The panel has no palette and no theme picker. It aliases the host's canvas
@@ -55,9 +61,9 @@ Index, Refresh and reconciliation name the relevant `project-room` operation
 file, so the skill owns those maintenance procedures.
 
 Room content is treated as untrusted data throughout: it is HTML-escaped in the
-UI and quoted in generated prompts. Sweep plans carry bounded, escaped JSON in
-a labelled untrusted-data block; inspect generated instructions before running
-them with an authenticated agent.
+UI, and dynamic context stays inside labelled data blocks in every generated
+prompt. Values are quoted and bounded; sweep plans carry escaped JSON.
+Inspect generated instructions before running them with an authenticated agent.
 
 ## Local access
 
