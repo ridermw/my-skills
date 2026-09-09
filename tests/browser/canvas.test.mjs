@@ -637,17 +637,50 @@ test("unattributed captures stay visible and generate reconciliation rather than
     assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), ["S002"]);
 });
 
-test("duplicate conversation indexes show an error instead of misdirected actions", async (t) => {
-    const root = await makeRoom(t, 2);
-    await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+for (const [name, index] of [
+    ["detail ordinals", [
         "# Chat index", "## 1. Alpha", "**chat_id:** `19:alpha@thread.v2`",
         "## 1. Beta", "**chat_id:** `19:beta@thread.v2`", "",
-    ].join("\n"));
-    const { page } = await openPage(t, root);
-    await page.locator("#tab-teams").click();
-    assert.match(await page.locator("#p-teams").textContent(), /Could not read the chat index/);
-    assert.equal(await page.locator("[data-act]").count(), 0);
-});
+    ].join("\n")],
+    ["quick-map identities", [
+        "# Chat index", "## Quick map",
+        "| # | Conversation | chat_id | Type | Sources | Fully captured? |",
+        "| --- | --- | --- | --- | --- | --- |",
+        "| 1 | Alpha | `19:alpha@thread.v2` | Group | S001 | partial |",
+        "| 2 | Alpha | `19:alpha@thread.v2` | Group | S002 | complete |", "",
+    ].join("\n")],
+]) {
+    test(`duplicate ${name} show an error instead of misdirected actions`, async (t) => {
+        const root = await makeRoom(t, 2);
+        await writeFile(path.join(root, "02_inventory/chat-index.md"), index);
+        const { page } = await openPage(t, root);
+        await page.locator("#tab-teams").click();
+        assert.match(await page.locator("#p-teams").textContent(), /Could not read the chat index/);
+        assert.equal(await page.locator("[data-act]").count(), 0);
+    });
+}
+
+for (const value of ["no", "missing"]) {
+    test(`explicit ${value} artifacts remain visible capture gaps`, async (t) => {
+        const root = await makeRoom(t);
+        const day = new Date().toISOString().slice(0, 10);
+        await writeFile(path.join(root, "02_inventory/chat-index.md"), [
+            "# Chat index", "## 1. Alpha", "**chat_id:** `19:alpha@thread.v2`",
+            "| Source | File | Captured | Coverage | Complete |",
+            "| --- | --- | --- | --- | --- |",
+            `| S001 current | 00_originals/source-1.txt | ${day} | full | complete |`, "",
+            "| Date | Verbatim transcript |", "| --- | --- |",
+            `| ${day} | ${value} |`, "",
+        ].join("\n"));
+        const { page } = await openPage(t, root);
+        await page.locator("#tab-teams").click();
+        assert.equal(await page.locator('.conv [data-act="recapture"]').count(), 1);
+        await page.locator("#sweepbtn").click();
+        await page.waitForFunction(() => document.querySelector("#promptout")?.textContent.includes("Verbatim transcript"));
+        assert.match(await page.locator("#promptout").textContent(), /Verbatim transcript/);
+        assert.doesNotMatch(await page.locator("#promptout").textContent(), /No conversation currently/);
+    });
+}
 
 test("narrow file previews can return to the tree while a request is pending", async (t) => {
     const root = await makeRoom(t, 3);

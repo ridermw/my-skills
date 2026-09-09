@@ -45,10 +45,27 @@ test("canvas opens with private out-of-band API and preview capabilities", async
 
 test("source search honors omitted, zero and explicit finite row limits", async (t) => {
     const { instanceId } = await openFixture(t);
-    for (const [input, count] of [[{}, 20], [{ limit: 0 }, 0], [{ limit: 3 }, 3]]) {
+    for (const [input, count] of [[{}, 20], [{ limit: 0 }, 0], [{ limit: 3 }, 3], [{ limit: 30 }, 25]]) {
         const result = await search({ instanceId, input });
         assert.equal(result.ok, true);
         assert.equal(result.rows.length, count);
+        assert.equal(result.matched, 25);
+    }
+});
+
+test("source search counts all filtered matches before limiting returned rows", async (t) => {
+    const { instanceId } = await openFixture(t);
+    for (const [input, matched, returned] of [
+        [{ query: "claim 2", limit: 3 }, 8, 3],
+        [{ query: "claim 25", limit: 0 }, 1, 0],
+        [{ authority: "Secondary" }, 0, 0],
+        [{ lifecycle: "Unavailable" }, 0, 0],
+        [{ query: "no such claim" }, 0, 0],
+    ]) {
+        const result = await search({ instanceId, input });
+        assert.equal(result.ok, true);
+        assert.equal(result.matched, matched);
+        assert.equal(result.rows.length, returned);
     }
 });
 

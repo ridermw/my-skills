@@ -41,7 +41,9 @@ Overview badges and cards use the same warning model. The coverage reader and
 Markdown preview share table-cell parsing so escaped pipes cannot shift columns.
 Artifacts without a conversation match remain visible in a separate unattributed
 collection, with an Index action for reconciliation rather than automatic
-re-capture. Duplicate conversation indexes are rejected before actions appear.
+re-capture. Duplicate conversation identities and quick-map targets are rejected
+before actions appear. Missing occurrence artifacts stay actionable unless the
+record rules out retrieval or the occurrence is still in the future.
 Conversation identity comes from declared `chat_id` metadata, not incidental
 references in notes.
 
@@ -81,6 +83,7 @@ Prompt paths preserve their exact spelling, including whitespace, within a
 32,768-character budget; larger paths are explicitly omitted, not shortened into
 a different target. Bounded inbox listings report both the total and omitted
 path counts.
+Agent source searches return the full matched count alongside the limited rows.
 Room selection also preserves the entered path's whitespace. File previews keep
 their Back control during loading and errors, returning keyboard focus to the
 file tree without accepting a late response.

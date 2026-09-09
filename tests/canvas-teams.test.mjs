@@ -1324,3 +1324,93 @@ for (const [first, second] of [[alphaId, betaId], [betaId, alphaId]]) {
         })), /conflicting.*chat_id/i);
     });
 }
+
+for (const [value, missing] of [
+    ["no", true], ["NO", true], ["missing", true], ["Missing - not captured", true],
+    ["**no**", true], ["`missing`", true], ["no recording", false],
+    ["none exists", false], ["not available", false], ["n/a", false],
+    ["S001", false], ["S001 - no further pages", false], ["notes.json", false],
+]) {
+    test(`artifact absence preserves coverage semantics for ${value}`, () => {
+        const health = healthFor(["| S001 current | full.json | 2026-09-07 | full | complete |"], {
+            extra: "| Date | Verbatim transcript |\n| --- | --- |\n| 2026-09-07 | " + value + " |",
+        });
+        const [conversation] = health.conversations;
+        assert.equal(conversation.missingArtifacts.length, missing ? 1 : 0);
+        assert.equal(conversation.needsRecapture, missing);
+        const plan = teams.sweepPlan(health);
+        assert.equal(plan.targets.length, missing ? 1 : 0);
+        if (missing) assert.equal(sweepData(plan.text).data.targets[0].reasons.missingArtifacts.total, 1);
+    });
+}
+
+for (const [name, quickRows] of [
+    ["ordinal", [
+        `| 1 | Alpha | \`${alphaId}\` | Group | S001 | partial |`,
+        `| 01 | Beta | \`${betaId}\` | Group | S999 | complete |`,
+    ]],
+    ["full chat ID", [
+        `| 1 | Alpha | \`${alphaId}\` | Group | S001 | partial |`,
+        `| 2 | Alpha | \`${alphaId}\` | Group | S999 | complete |`,
+    ]],
+    ["resolved ID alias", [
+        `| 1 | Alpha | \`${alphaId}\` | Group | S001 | partial |`,
+        "| | Alpha | `19:owner_…aaa@unq.gbl.spaces` | Group | S999 | complete |",
+    ]],
+    ["resolved name", [
+        "| | Alpha | | Group | S001 | partial |",
+        "| | Alpha | | Group | S999 | complete |",
+    ]],
+]) {
+    for (const reverse of [false, true]) {
+        test(`quick-map identity uniqueness rejects repeated ${name}, reverse=${reverse}`, () => {
+            assert.throws(() => teams.parseChatIndex(chatIndex({
+                quickRows: reverse ? [...quickRows].reverse() : quickRows,
+                details: [detail(1, "Alpha", alphaId)],
+            })), /duplicate quick-map/i);
+        });
+    }
+}
+
+test("quick-map identity uniqueness also protects synthesized conversations", () => {
+    assert.throws(() => teams.parseChatIndex(chatIndex({ quickRows: [
+        "| | Alpha | | Group | S001 | partial |",
+        "| | Alpha | | Group | S999 | complete |",
+    ] })), /duplicate quick-map/i);
+});
+
+test("quick-map identity uniqueness spans repeated map sections without discarding distinct rows", () => {
+    const first = chatIndex({ quickRows: [`| 1 | Alpha | \`${alphaId}\` | Group | S001 | partial |`] });
+    const second = (id, ordinal) => "\n## Quick map\n"
+        + "| # | Conversation | chat_id | Type | Sources | Fully captured? |\n"
+        + "| --- | --- | --- | --- | --- | --- |\n"
+        + `| ${ordinal} | Beta | \`${id}\` | Group | S002 | complete |`;
+    assert.throws(() => teams.parseChatIndex(first + second(betaId, 1)), /duplicate quick-map/i);
+    assert.throws(() => teams.parseChatIndex(first + second(alphaId, 2)), /duplicate quick-map/i);
+    const parsed = teams.parseChatIndex(first + second(betaId, 2));
+    assert.deepEqual(parsed.conversations.map((c) => c.chatId), [alphaId, betaId]);
+    assert.deepEqual(parsed.conversations.map((c) => c.fullyCaptured), [false, true]);
+});
+
+test("quick-map identity uniqueness preserves empty identities and ambiguous abbreviations", () => {
+    const parsed = teams.parseChatIndex(chatIndex({
+        quickRows: [
+            "| 1 | Alpha | `19:owner_…@unq.gbl.spaces` | Group | S001 | partial |",
+            "| 2 | Beta | `19:owner_…@unq.gbl.spaces` | Group | S002 | complete |",
+        ],
+        details: [detail(1, "Alpha", alphaId), detail(2, "Beta", betaId)],
+    }));
+    assert.equal(parsed.identityConflicts.length, 2);
+    assert.ok(parsed.conversations.every((c) => c.fullyCaptured === undefined));
+    const unnamed = teams.parseChatIndex(chatIndex({ quickRows: [
+        "| 1 | Alpha | | Group | S001 | partial |",
+        "| 2 | Beta | | Group | S002 | complete |",
+    ] }));
+    assert.equal(unnamed.conversations.length, 2);
+});
+
+test("declared detail identity uniqueness rejects one chat ID under multiple ordinals", () => {
+    assert.throws(() => teams.parseChatIndex(chatIndex({
+        details: [detail(1, "Alpha", alphaId), detail(2, "Renamed Alpha", alphaId)],
+    })), /duplicate detail chat ID/i);
+});

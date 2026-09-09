@@ -121,11 +121,12 @@ function parseOccurrenceRow(header, row) {
         const label = stripMd(header[i]);
         const raw = row[i] || "";
         const sourceIds = sourceIdsIn(raw);
+        const note = stripMd(raw);
         out.artifacts.push({
             label,
-            present: sourceIds.length > 0 || !/❌|—|^\s*$/.test(raw.trim()),
+            present: sourceIds.length > 0 || !/❌|—|^\s*$|^(?:no|missing)\b/i.test(note.trim()),
             sourceIds,
-            note: stripMd(raw),
+            note,
         });
     }
     return out;
@@ -177,6 +178,7 @@ export function parseChatIndex(text) {
 
     const conversations = [];
     const detailIndexes = new Set();
+    const detailChatIds = new Set();
     let knownGaps = [];
     let quickMap = [];
     const identityConflicts = [];
@@ -198,7 +200,7 @@ export function parseChatIndex(text) {
         if (/^quick map/i.test(sec.title)) {
             const t = tables[0];
             if (t) {
-                quickMap = t.rows.map((r) => {
+                quickMap.push(...t.rows.map((r) => {
                     const c = t.header.map((h) => h.toLowerCase());
                     const get = (n) => {
                         const i = c.findIndex((x) => x.includes(n));
@@ -213,7 +215,7 @@ export function parseChatIndex(text) {
                         fullyCaptured: tri(get("captured")),
                         capturedNote: stripMd(get("captured")),
                     };
-                });
+                }));
             }
             continue;
         }
@@ -225,6 +227,9 @@ export function parseChatIndex(text) {
         // a numbered section is one conversation
         const body = sec.lines.join("\n");
         if (sec.chatIds.size > 1) throw new Error("Invalid chat index: conflicting chat_id declarations for conversation " + index);
+        const chatId = sec.chatIds.values().next().value || null;
+        if (chatId && detailChatIds.has(chatId)) throw new Error("Invalid chat index: duplicate detail chat ID");
+        if (chatId) detailChatIds.add(chatId);
         const meta = labelled(sec.lines);
         const title = numbered[2];
         const dash = title.split(/\s+[—–]\s+/);
@@ -233,7 +238,7 @@ export function parseChatIndex(text) {
             index,
             name: stripMd(dash[0]),
             kindLabel: dash[1] ? stripMd(dash[1]) : "",
-            chatId: sec.chatIds.values().next().value || null,
+            chatId,
             created: (body.match(RX.created) || [])[1] || null,
             organizer: meta.organizer || null,
             recurs: meta.recurs || null,
@@ -255,7 +260,21 @@ export function parseChatIndex(text) {
 
     if (!conversations.length && !quickMap.length) return null;
 
+    const quickOrdinals = new Set();
+    const quickChatIds = new Set();
+    for (const q of quickMap) {
+        if (q.ordinal != null) {
+            if (quickOrdinals.has(q.ordinal)) throw new Error("Invalid chat index: duplicate quick-map ordinal " + q.ordinal);
+            quickOrdinals.add(q.ordinal);
+        }
+        if (q.chatIdShort && !q.chatIdShort.includes("\u2026")) {
+            if (quickChatIds.has(q.chatIdShort)) throw new Error("Invalid chat index: duplicate quick-map chat ID");
+            quickChatIds.add(q.chatIdShort);
+        }
+    }
+
     // fold quick-map facts onto the conversations they describe
+    const mapped = new Set();
     for (const q of quickMap) {
         // Permanent IDs outrank positional/name hints, but inconsistent or
         // ambiguous evidence must be reconciled before any facts are attached.
@@ -301,12 +320,14 @@ export function parseChatIndex(text) {
         }
         const match = q.chatIdShort ? byId : byOrdinal || nameMatches[0];
         if (match) {
+            if (mapped.has(match)) throw new Error("Invalid chat index: duplicate quick-map target for conversation " + match.index);
+            mapped.add(match);
             match.type = match.type || q.type;
             match.fullyCaptured = q.fullyCaptured;
             match.capturedNote = q.capturedNote;
             if (q.sourceIds.length) match.quickSourceIds = q.sourceIds;
         } else {
-            conversations.push({
+            const created = {
                 index: q.ordinal != null && !byOrdinal ? q.ordinal :
                     conversationIndex(String(conversations.reduce((max, c) => Math.max(max, c.index), 0) + 1)),
                 name: q.name,
@@ -318,7 +339,9 @@ export function parseChatIndex(text) {
                 captures: [],
                 occurrences: [],
                 quickSourceIds: q.sourceIds,
-            });
+            };
+            conversations.push(created);
+            mapped.add(created);
         }
     }
 

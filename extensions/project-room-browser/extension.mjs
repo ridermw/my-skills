@@ -104,14 +104,15 @@ const session = await joinSession({
                             .toLowerCase()
                             .split(/\s+/)
                             .filter(Boolean);
-                        const rows = room.sources
+                        const matches = room.sources
                             .filter((s) => {
                                 if (ctx.input?.authority && s.Authority !== ctx.input.authority) return false;
                                 if (ctx.input?.lifecycle && s.Lifecycle !== ctx.input.lifecycle) return false;
                                 if (!q.length) return true;
                                 const hay = Object.values(s).join(" ").toLowerCase();
                                 return q.every((t) => hay.includes(t));
-                            })
+                            });
+                        const rows = matches
                             .slice(0, limit)
                             .map((s) => ({
                                 id: s["Source ID"],
@@ -123,7 +124,7 @@ const session = await joinSession({
                                 claims: untrusted(s["Key claims or content"]),
                                 limitations: untrusted(s.Limitations),
                             }));
-                        return { ok: true, _untrusted_content_note: UNTRUSTED_NOTE, matched: rows.length, rows };
+                        return { ok: true, _untrusted_content_note: UNTRUSTED_NOTE, matched: matches.length, rows };
                     },
                 },
             ],
