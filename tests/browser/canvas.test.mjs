@@ -4,6 +4,7 @@ import { cp, mkdir, rename, truncate, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { makeRoom, serveRoom } from "../helpers/canvas-fixture.mjs";
+import { readRoom } from "../../extensions/project-room-browser/room.mjs";
 
 let browser;
 before(async () => { browser = await chromium.launch({ headless: true }); });
@@ -666,6 +667,169 @@ test("room root transition discards an old room's pending query debounce", async
     await page.locator("#tab-inventory").click();
     assert.deepEqual(await page.locator("#list .row").evaluateAll((rows) => rows.map((row) => row.dataset.id)), ["NEW-S001", "NEW-S002"]);
 });
+
+for (const late of ["success", "failure", "invalid JSON", "network error"]) {
+    test(`room selection concurrency: client ignores older ${late} after newer success`, async (t) => {
+        const prior = await makeRoom(t);
+        const older = await makeRoom(t);
+        const newer = await makeRoom(t);
+        const oldRoom = await readRoom(older);
+        const { page, errors } = await openPage(t, prior);
+        await page.route("**/api/browse*", (route) => route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } }));
+        const gate = Promise.withResolvers();
+        const entered = Promise.withResolvers();
+        await page.route("**/api/room?path=" + encodeURIComponent(older), async (route) => {
+            entered.resolve();
+            await gate.promise;
+            if (late === "network error") await route.abort("failed");
+            else if (late === "invalid JSON") await route.fulfill({ body: "{", contentType: "application/json" });
+            else await route.fulfill({ status: late === "failure" ? 500 : 200, json: late === "failure"
+                ? { ok: false, error: "Obsolete room failed" } : { ok: true, room: oldRoom } });
+        });
+        await page.evaluate((target) => { window.olderOpening = openRoom(target); }, older);
+        await entered.promise;
+        try {
+            await page.evaluate((target) => openRoom(target), newer);
+            await page.locator("#tab-inventory").click();
+            await page.locator("#q").fill("Fixture");
+            await page.waitForFunction(() => Q === "Fixture");
+        } finally {
+            gate.resolve();
+            await page.evaluate(() => window.olderOpening);
+        }
+        assert.equal(await page.evaluate(() => DATA.root), newer);
+        assert.equal(await page.evaluate(() => window.__ROOM_PATH__), newer);
+        assert.equal(await page.locator(".picker").count(), 0);
+        assert.equal(await page.locator("#q").inputValue(), "Fixture");
+        await assertKeyboardFocus(page, "#q");
+        assert.deepEqual(errors, []);
+    });
+}
+
+test("room selection concurrency: a newest client failure keeps the prior room despite an older late success", async (t) => {
+    const prior = await makeRoom(t);
+    const older = await makeRoom(t);
+    const oldRoom = await readRoom(older);
+    const missing = path.join(prior, "missing");
+    const { page, origin, state, errors } = await openPage(t, prior);
+    await page.route("**/api/browse*", (route) => route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } }));
+    const gate = Promise.withResolvers();
+    const entered = Promise.withResolvers();
+    await page.route("**/api/room?path=" + encodeURIComponent(older), async (route) => {
+        entered.resolve();
+        await gate.promise;
+        await route.fulfill({ json: { ok: true, room: oldRoom } });
+    });
+    await page.evaluate((target) => { window.olderOpening = openRoom(target); }, older);
+    await entered.promise;
+    try {
+        await page.evaluate((target) => openRoom(target), missing);
+        assert.match(await page.locator(".pickerr").textContent(), /does not exist/);
+    } finally {
+        gate.resolve();
+        await page.evaluate(() => window.olderOpening);
+    }
+    assert.equal(await page.evaluate(() => DATA.root), prior);
+    assert.equal(await page.locator("#pathin").inputValue(), missing);
+    assert.equal(state.roomPath, prior);
+    const response = await fetch(origin + "/api/file?rel=00_originals/source-1.txt", { headers: { "x-room-token": state.token } });
+    assert.equal((await response.json()).file.text, "Source 1 contents\n");
+    assert.deepEqual(errors, []);
+});
+
+for (const entryPoint of ["openRoom", "bootstrap"]) {
+    test(`room selection concurrency: current-local ${entryPoint} supersession shows a usable picker`, async (t) => {
+        const prior = await makeRoom(t);
+        const external = await makeRoom(t);
+        await writeFile(path.join(external, "00_originals/source-1.txt"), "Externally selected contents\n");
+        const { origin, url, state } = await serveRoom(t, prior);
+        const context = await browser.newContext();
+        t.after(() => context.close());
+        const page = await context.newPage();
+        page.setDefaultTimeout(5000);
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        await page.route("**/api/browse*", (route) => route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } }));
+        if (entryPoint === "openRoom") {
+            await page.goto(url);
+            await page.locator(".rail").waitFor();
+        }
+        let localRequests = 0;
+        page.on("request", (request) => {
+            if (new URL(request.url()).pathname === "/api/room") localRequests++;
+        });
+        const headers = { "x-room-token": state.token };
+        const intercepted = entryPoint === "bootstrap" ? "**/api/room" : "**/api/room?path=" + encodeURIComponent(prior);
+        await page.route(intercepted, async (route) => {
+            const selected = await fetch(origin + "/api/room?path=" + encodeURIComponent(external), { headers });
+            assert.equal(selected.status, 200);
+            assert.equal((await selected.json()).room.root, external);
+            await route.fulfill({
+                status: 409,
+                json: { ok: false, code: "ROOM_SELECTION_SUPERSEDED", error: "Room selection was superseded by a newer request" },
+            });
+        });
+        if (entryPoint === "bootstrap") await page.goto(url);
+        else await page.evaluate((target) => openRoom(target), prior);
+
+        await assert.doesNotReject(() => page.locator(".picker").waitFor({ timeout: 2000 }),
+            "A locally current server supersession must replace loading with a usable picker");
+        assert.match(await page.locator(".pickerr").textContent(), /superseded/i);
+        assert.equal(await page.locator(".skeleton").count(), 0);
+        assert.equal(await page.locator(".rail").count(), 0);
+        assert.equal(await page.evaluate(() => DATA?.root ?? null), entryPoint === "bootstrap" ? null : prior);
+        assert.equal(await page.evaluate(() => roomLoadGeneration), entryPoint === "bootstrap" ? 1 : 2);
+        assert.equal(localRequests, 1, "Server supersession must not trigger an automatic selecting GET");
+        assert.equal(state.roomPath, external);
+        const file = await fetch(origin + "/api/file?rel=00_originals/source-1.txt", { headers });
+        assert.equal((await file.json()).file.text, "Externally selected contents\n");
+        await assertKeyboardFocus(page, "#pathin");
+        await page.locator("#pathin").fill(external);
+        await page.locator("#pathin").press("Enter");
+        await page.locator(".rail").waitFor();
+        assert.equal(await page.evaluate(() => DATA.root), external);
+        assert.equal(localRequests, 2, "The next room request requires explicit picker activation");
+        assert.deepEqual(errors, []);
+    });
+}
+
+for (const lateFailure of [false, true]) {
+    test(`room selection concurrency: obsolete bootstrap ${lateFailure ? "failure" : "success"} cannot replace a newer open`, async (t) => {
+        const prior = await makeRoom(t);
+        const newer = await makeRoom(t);
+        const server = await serveRoom(t, prior);
+        const context = await browser.newContext();
+        t.after(() => context.close());
+        const page = await context.newPage();
+        const gate = Promise.withResolvers();
+        const entered = Promise.withResolvers();
+        const finished = Promise.withResolvers();
+        await page.route("**/api/browse*", (route) => route.fulfill({ json: { ok: true, roots: [], rooms: [], browse: null } }));
+        await page.route("**/api/room", async (route) => {
+            const response = await route.fetch();
+            entered.resolve();
+            await gate.promise;
+            await route.fulfill(lateFailure ? { status: 500, json: { ok: false, error: "Obsolete bootstrap failed" } } : { response });
+            finished.resolve();
+        });
+        await page.goto(server.url);
+        await entered.promise;
+        try {
+            await page.evaluate((target) => openRoom(target), newer);
+            await page.locator("#tab-inventory").click();
+            await page.locator("#q").fill("Fixture");
+            await page.waitForFunction(() => Q === "Fixture");
+        } finally {
+            gate.resolve();
+            await finished.promise;
+        }
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.equal(await page.evaluate(() => DATA.root), newer);
+        assert.equal(await page.locator(".picker").count(), 0);
+        assert.equal(await page.locator("#q").inputValue(), "Fixture");
+        await assertKeyboardFocus(page, "#q");
+    });
+}
 
 test("an inbox file contributes only one Overview flag", async (t) => {
     const root = await makeRoom(t);

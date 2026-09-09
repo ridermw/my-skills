@@ -30,6 +30,7 @@ let LOGKEY = null;
 let FILTERS = {};
 let Q = "";
 let roomGeneration = 0;
+let roomLoadGeneration = 0;
 
 /* ---------------- markdown ---------------- */
 const BT = String.fromCharCode(96);
@@ -209,31 +210,43 @@ function changeClass(v) {
 
 /* ---------------- data ---------------- */
 async function load(pathOverride) {
-    const p = pathOverride || window.__ROOM_PATH__ || "";
-    const r = await api("/api/room" + (p ? "?path=" + encodeURIComponent(p) : ""));
-    const j = await r.json();
-    if (!j.ok) {
-        const error = new Error(j.error || "Failed to read room");
-        error.code = j.code;
+    const generation = ++roomLoadGeneration;
+    const assertCurrent = () => {
+        if (generation !== roomLoadGeneration) {
+            throw Object.assign(new Error("Room selection was superseded by a newer request"), { code: "ROOM_SELECTION_SUPERSEDED" });
+        }
+    };
+    try {
+        const p = pathOverride || window.__ROOM_PATH__ || "";
+        const r = await api("/api/room" + (p ? "?path=" + encodeURIComponent(p) : ""));
+        const j = await r.json();
+        assertCurrent();
+        if (!j.ok) {
+            const error = new Error(j.error || "Failed to read room");
+            error.code = j.code;
+            throw error;
+        }
+        if (DATA && DATA.root !== j.room.root) {
+            VIEW = "overview";
+            SEL = null;
+            FILE = null;
+            LOGKEY = null;
+            FILTERS = {};
+            Q = "";
+            SORT = "id";
+            BROWSE = null;
+            roomGeneration++;
+            fileLoadGeneration++;
+            pickerLoadGeneration++;
+        }
+        DATA = j.room;
+        window.__ROOM_PATH__ = DATA.root;
+        document.title = DATA.name || "Project room";
+        return DATA;
+    } catch (error) {
+        assertCurrent();
         throw error;
     }
-    if (DATA && DATA.root !== j.room.root) {
-        VIEW = "overview";
-        SEL = null;
-        FILE = null;
-        LOGKEY = null;
-        FILTERS = {};
-        Q = "";
-        SORT = "id";
-        BROWSE = null;
-        roomGeneration++;
-        fileLoadGeneration++;
-        pickerLoadGeneration++;
-    }
-    DATA = j.room;
-    window.__ROOM_PATH__ = DATA.root;
-    document.title = DATA.name || "Project room";
-    return DATA;
 }
 
 /* ---------------- render ---------------- */
@@ -1672,11 +1685,15 @@ let pickerLoadGeneration = 0;
 
 async function openRoom(p) {
     replaceContent($("#app"), '<div class="skeleton" id="roomloading" tabindex="-1" role="status" aria-label="Opening room"><div class="sk tall w40"></div><div class="sk w90"></div><div class="sk w70"></div><div class="sk w90"></div></div>');
+    const loading = load(p);
+    const generation = roomLoadGeneration;
     try {
-        await load(p);
+        await loading;
+        if (generation !== roomLoadGeneration) return;
         render();
         announce("Opened room " + DATA.name);
     } catch (e) {
+        if (generation !== roomLoadGeneration) return;
         await renderPicker(friendlyError(String(e.message || e)), p);
     }
 }
@@ -1784,10 +1801,14 @@ async function renderPicker(errMsg, lastTried) {
         $("#app").innerHTML = '<div class="err" role="alert">Open this canvas using its private launch link.</div>';
         return;
     }
+    const loading = load();
+    const generation = roomLoadGeneration;
     try {
-        await load();
+        await loading;
+        if (generation !== roomLoadGeneration) return;
         render();
     } catch (e) {
+        if (generation !== roomLoadGeneration) return;
         // A bad path should land in the picker, not a dead end.
         await renderPicker(
             e.code === "ROOM_NOT_SELECTED" ? "" : friendlyError(String(e.message || e)),

@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { readRoom } from "./room.mjs";
-import { handleRequest } from "./routes.mjs";
+import { handleRequest, selectRoom } from "./routes.mjs";
 import { createRoomState, canvasUrl } from "./capability.mjs";
 
 const servers = new Map(); // instanceId -> { server, url, state }
@@ -187,8 +187,8 @@ const session = await joinSession({
                 if (!entry) {
                     entry = await startServer(ctx.instanceId, requested);
                     servers.set(ctx.instanceId, entry);
-                } else if (requested && requested !== entry.state.roomPath) {
-                    entry.state.roomPath = requested;
+                } else if (requested) {
+                    await selectRoom(entry.state, requested);
                 }
                 const name = entry.state.roomPath ? path.basename(entry.state.roomPath) : "Project room";
                 return { title: name, url: entry.url };

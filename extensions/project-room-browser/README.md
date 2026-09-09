@@ -108,6 +108,9 @@ file tree without accepting a late response.
 After a successful change of room root, the browser clears room-specific
 selections and filters and rejects old preview and search callbacks.
 Same-room refreshes and failed loads preserve that state.
+HTTP selections and SDK reopens share last-request ordering. An older read
+cannot replace the latest selection, even when the latest request fails;
+the previously committed room stays selected in that case.
 View updates preserve logical keyboard focus and text selection, or move to a
 visible destination control. Date sorting uses the same calendar validation as
 coverage; unusable dates stay last in both directions.
@@ -125,8 +128,13 @@ Cross-site requests are refused even with a capability. This is an HTTP
 access boundary, not isolation from processes that can inspect the CLI's
 memory or private launch-link records.
 
-Manifest-selected files must remain inside the room, including through
-symlinks. Metadata files are limited to 2 MiB each and rejected rather than
+Manifest-selected files are checked for room containment, including through
+symlinks. **Known limitation:** validation and filesystem access are not atomic.
+Concurrent replacement of a file or ancestor can evade these checks; the current
+reader must not be treated as a race-safe boundary for an untrusted,
+concurrently modified room.
+
+Metadata files are limited to 2 MiB each and rejected rather than
 partially parsed. Text previews show up to 2 MiB, and raw image previews are
 limited to 25 MiB; larger images are listed as non-previewable files rather than
 broken image previews. Source paths use consistent separators, and unrecognised

@@ -11,6 +11,36 @@ import { readRoom, readRoomFile, readRoomBytes, listSiblingRooms, browseDir, sug
 import { sweepPlan } from "./teams.mjs";
 import { renderShell } from "./ui.mjs";
 
+const selections = new WeakMap();
+
+function selectionError(code, message) {
+    return Object.assign(new Error(message), { code });
+}
+
+export async function selectRoom(state, requested) {
+    const selection = {};
+    selections.set(state, selection);
+    const assertCurrent = () => {
+        if (selections.get(state) !== selection) {
+            throw selectionError("ROOM_SELECTION_SUPERSEDED", "Room selection was superseded by a newer request");
+        }
+    };
+    try {
+        const p = requested || state.roomPath;
+        if (!p) throw selectionError("ROOM_NOT_SELECTED", "No room is open");
+        const room = await readRoom(p);
+        assertCurrent();
+        state.roomPath = room.root;
+        return room;
+    } catch (error) {
+        assertCurrent();
+        throw error;
+    } finally {
+        // Removing a completed latest selection still invalidates older tokens.
+        if (selections.get(state) === selection) selections.delete(state);
+    }
+}
+
 export function json(res, code, body) {
     res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
     res.end(JSON.stringify(body));
@@ -49,10 +79,7 @@ export async function handleRequest(state, req, res) {
         }
 
         if (url.pathname === "/api/room") {
-            const p = url.searchParams.get("path") || state.roomPath;
-            if (!p) return json(res, 409, { ok: false, code: "ROOM_NOT_SELECTED", error: "No room is open" });
-            const room = await readRoom(p);
-            state.roomPath = room.root;
+            const room = await selectRoom(state, url.searchParams.get("path"));
             return json(res, 200, { ok: true, room });
         }
 
@@ -107,6 +134,11 @@ export async function handleRequest(state, req, res) {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
         res.end(renderShell());
     } catch (err) {
-        json(res, 500, { ok: false, error: String(err && err.message ? err.message : err) });
+        const conflict = err?.code === "ROOM_NOT_SELECTED" || err?.code === "ROOM_SELECTION_SUPERSEDED";
+        json(res, conflict ? 409 : 500, {
+            ok: false,
+            ...(conflict ? { code: err.code } : {}),
+            error: String(err && err.message ? err.message : err),
+        });
     }
 }
