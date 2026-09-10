@@ -498,17 +498,6 @@ input[type="search"] { flex: 1; min-width: 0; }
   .theadacts { width: 100%; }
   .theadacts .btn { flex: 1 1 auto; }
 }
-/* ---- theme picker ---- */
-.themebox { display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px; }
-.tlbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ui-muted); }
-.tsel { width: 100%; font: inherit; font-size: 12px; padding: 4px 6px; border-radius: var(--r-sm);
-  border: 1px solid var(--cp-border); background: var(--cp-surface); color: var(--cp-text); }
-.trow { display: flex; gap: 6px; align-items: center; }
-.trow .seg { flex: 1 1 auto; }
-.tlink { flex: 0 0 auto; background: none; border: 0; cursor: pointer; font: inherit; font-size: 11.5px;
-  color: var(--cp-link); padding: 2px 4px; border-radius: var(--r-sm); }
-.tlink:hover { text-decoration: underline; }
-.twarn { margin: 2px 0 0; font-size: 11px; line-height: 1.45; color: var(--ink-amber); }
 .tally { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; margin: 0 6px 6px 0;
   font-size: 12px; color: var(--ui-muted); background: transparent; border: 0; border-radius: 0; }
 .tally .c { font-variant-numeric: tabular-nums; color: var(--cp-text); font-weight: 600; }
