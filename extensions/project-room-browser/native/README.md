@@ -39,3 +39,11 @@ Tests run the production executable against synthetic files, including
 leaf/ancestor/root replacement, internal links, identity, bounded protocol,
 and special-file nonblocking behavior. Native platform results must be
 reported separately; a host test is not evidence for another operating system.
+
+`../reader.mjs` provides the JavaScript transport with `RoomReader.open`,
+`openFile`, `openDirectory`, and `close`. It checks the handshake and every
+response, enforces a 32-request wire budget, and rejects abandoned requests
+before disposing its child. File and directory wrappers own their handles;
+close them even when parsing fails. Directory errors are not resumable.
+`../paths.mjs` preserves path spelling and refuses malformed Unicode rather
+than letting process argument encoding select a different name.

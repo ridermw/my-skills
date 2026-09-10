@@ -4,6 +4,8 @@
   "scripts": {
     "build:canvas-reader": "node scripts/build-canvas-reader.mjs",
     "test:canvas:native": "node scripts/build-canvas-reader.mjs --test",
+    "pretest:canvas": "npm run build:canvas-reader",
+    "pretest:canvas:browser": "npm run build:canvas-reader",
     "test:canvas": "node --test tests/canvas-*.test.mjs",
     "test:canvas:browser": "node --test tests/browser/*.test.mjs"
   },
