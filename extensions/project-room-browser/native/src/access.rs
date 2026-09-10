@@ -133,13 +133,7 @@ fn metadata(metadata: &Metadata) -> Result<FileStat> {
     #[cfg(windows)]
     let identity = {
         use cap_fs_ext::MetadataExt;
-        let volume = MetadataExt::volume_serial_number(metadata).ok_or_else(|| {
-            ReaderError::new("ROOM_READER_METADATA", "Volume identity is unavailable")
-        })?;
-        let index = MetadataExt::file_index(metadata).ok_or_else(|| {
-            ReaderError::new("ROOM_READER_METADATA", "File identity is unavailable")
-        })?;
-        format!("{volume}:{index}")
+        format!("{}:{}", metadata.dev(), metadata.ino())
     };
     #[cfg(not(any(unix, windows)))]
     return Err(ReaderError::new(

@@ -17,7 +17,10 @@ fn fixture() -> tempfile::TempDir {
 #[test]
 fn reads_regular_files_and_returns_stable_handle_identity() {
     let base = fixture();
-    let mut reader = NativeProcess::spawn(&base.path().join("room"));
+    let root = base.path().join("room");
+    fs::hard_link(root.join("inside.txt"), root.join("alias.txt")).unwrap();
+    fs::write(root.join("other.txt"), b"synthetic-inside").unwrap();
+    let mut reader = NativeProcess::spawn(&root);
     let first = reader.open("inside.txt");
     let second = reader.open("inside.txt");
     assert_eq!(first.header["ok"], true);
@@ -32,6 +35,12 @@ fn reads_regular_files_and_returns_stable_handle_identity() {
         second.header["stat"]["identity"]
     );
     assert_ne!(first.header["handle"], second.header["handle"]);
+    let alias = reader.open("alias.txt");
+    let other = reader.open("other.txt");
+    assert_eq!(alias.header["ok"], true);
+    assert_eq!(other.header["ok"], true);
+    assert_eq!(first.header["stat"]["identity"], alias.header["stat"]["identity"]);
+    assert_ne!(first.header["stat"]["identity"], other.header["stat"]["identity"]);
     assert_eq!(reader.read("inside.txt").bytes, b"synthetic-inside");
     reader.shutdown();
 }
