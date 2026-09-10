@@ -7,6 +7,23 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 #[test]
+fn directory_metadata_is_available_but_directory_bytes_are_refused() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("not-a-file")).unwrap();
+    let mut reader = NativeProcess::spawn(root.path());
+    let opened = reader.open("not-a-file");
+    assert_eq!(opened.header["ok"], true);
+    assert_eq!(opened.header["stat"]["type"], "directory");
+    let reply = reader.request(json!({
+        "op": "read_prefix", "handle": opened.header["handle"], "limit": 4096,
+    }));
+    assert_eq!(reply.header["ok"], false);
+    assert_eq!(reply.header["error"]["code"], "ROOM_READER_TYPE");
+    assert!(reply.bytes.is_empty());
+    reader.shutdown();
+}
+
+#[test]
 fn prefixes_and_handle_limits_are_enforced_by_the_production_helper() {
     let root = tempfile::tempdir().unwrap();
     fs::write(root.path().join("data"), b"abcdef").unwrap();

@@ -19,6 +19,29 @@ const header = "Source ID,Path,Current or superseded,Change\n";
 const inventory = header + "S001,00_originals/report.md,Current,\n";
 const chatIndex = "# Chat index\n\n## 1. Fixture chat\n\n**chat_id:** `19:fixture`\n";
 
+async function allocatedBytes(file) {
+    if (process.platform !== "win32") return (await stat(file)).blocks * 512;
+    // Windows Stats.blocks is unavailable; query actual sparse allocation instead.
+    const { stdout } = await exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `
+        $ErrorActionPreference = 'Stop'
+        Add-Type -Namespace CanvasTests -Name SparseFile -MemberDefinition '
+            [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint="GetCompressedFileSizeW",
+                CharSet=System.Runtime.InteropServices.CharSet.Unicode, SetLastError=true)]
+            public static extern uint AllocatedBytes(string path, out uint high);'
+        [uint32]$high = 0
+        $low = [CanvasTests.SparseFile]::AllocatedBytes($env:CANVAS_SPARSE_FILE, [ref]$high)
+        $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        if ($low -eq [uint32]::MaxValue -and $errorCode -ne 0) {
+            throw [System.ComponentModel.Win32Exception]::new($errorCode)
+        }
+        ([uint64]$high * 4294967296 + [uint64]$low).ToString([cultureinfo]::InvariantCulture)
+    `], { env: { ...process.env, CANVAS_SPARSE_FILE: file }, timeout: 30000 });
+    assert.match(stdout.trim(), /^\d+$/, "Native allocation query must return a byte count");
+    const bytes = Number(stdout.trim());
+    assert.ok(Number.isSafeInteger(bytes), "Allocation must be an exact byte count");
+    return bytes;
+}
+
 test("shared canvas fixture remains readable without optional maintenance files", async (t) => {
     const root = await makeRoom(t, 3);
     const room = await readRoom(root);
@@ -274,11 +297,12 @@ test("metadata limit rejects a sparse multi-GiB manifest under a constrained hea
     const { root } = await fixture(t);
     const handle = await open(path.join(root, "room.yaml"), "r+");
     try {
+        if (process.platform === "win32") await exec("fsutil", ["sparse", "setflag", path.join(root, "room.yaml")]);
         await handle.truncate(3 * 1024 * 1024 * 1024 + 1);
     } finally {
         await handle.close();
     }
-    assert.ok((await stat(path.join(root, "room.yaml"))).blocks * 512 < METADATA_LIMIT);
+    assert.ok(await allocatedBytes(path.join(root, "room.yaml")) < METADATA_LIMIT);
     const { stdout } = await exec(process.execPath, [
         "--max-old-space-size=48", "--input-type=module", "-e", `
             import assert from "node:assert/strict";
@@ -787,6 +811,7 @@ test("preview reads a bounded prefix of a real sparse multi-GiB file under a con
     const size = 3 * 1024 * 1024 * 1024 + 1;
     const handle = await open(path.join(root, "large.txt"), "w");
     try {
+        if (process.platform === "win32") await exec("fsutil", ["sparse", "setflag", path.join(root, "large.txt")]);
         const prefix = Buffer.alloc(TEXT_LIMIT + 4, 0x61);
         prefix.write("Sparse fixture\n");
         await handle.write(prefix);
@@ -794,8 +819,8 @@ test("preview reads a bounded prefix of a real sparse multi-GiB file under a con
     } finally {
         await handle.close();
     }
-    const info = await stat(path.join(root, "large.txt"));
-    assert.ok(info.blocks * 512 < TEXT_LIMIT * 2, "Fixture must remain sparse, not allocate GiB on disk");
+    assert.ok(await allocatedBytes(path.join(root, "large.txt")) < TEXT_LIMIT * 2,
+        "Fixture must remain sparse, not allocate GiB on disk");
     const { stdout } = await exec(process.execPath, [
         "--max-old-space-size=48", "--input-type=module", "-e", `
             import assert from "node:assert/strict";

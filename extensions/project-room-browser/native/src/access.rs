@@ -2,7 +2,7 @@ use crate::protocol::{
     DirectoryEntry, FileStat, ReaderError, Request, Response, Result, MAX_BATCH, MAX_HANDLES,
     MAX_HEADER, MAX_PAYLOAD, MAX_SAFE_INTEGER,
 };
-use cap_fs_ext::DirExt;
+use cap_fs_ext::{DirExt, OpenOptionsMaybeDirExt};
 use cap_std::fs::{Dir, File, FileType, Metadata, ReadDir};
 use std::collections::{BTreeMap, VecDeque};
 use std::ffi::OsString;
@@ -289,7 +289,7 @@ impl Access {
                 let id = self.available_handle()?;
                 let resolved = self.resolve(&rel)?;
                 let mut options = cap_std::fs::OpenOptions::new();
-                options.read(true);
+                options.read(true).maybe_dir(true);
                 #[cfg(unix)]
                 {
                     use cap_std::fs::OpenOptionsExt;
