@@ -1,3 +1,6 @@
 .DS_Store
 .impeccable/
 docs/
+node_modules/
+extensions/project-room-browser/native/target/
+extensions/project-room-browser/bin/

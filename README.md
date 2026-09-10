@@ -19,6 +19,21 @@ skill's own instructions travel together without a build or installation step.
 | [`plan-exit-review`](skills/plan-exit-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Bounded, interactive engineering-readiness review of a plan before coding: scope challenge → architecture → code → tests → performance, with recommendation-first questions. Review only. |
 | [`plan-mega-review`](skills/plan-mega-review/) | [Garry Tan](https://github.com/garrytan/gstack) (MIT), adapted | Maximum-rigor review for high-risk/cross-cutting plans (EXPANSION / HOLD / REDUCTION): system audit, failure-mode registry, threat model, observability + deploy. Review only. |
 
+## Extensions
+
+One optional extra lives outside `skills/`:
+[`extensions/project-room-browser`](extensions/project-room-browser/) — a Copilot
+CLI **canvas** that browses a `project-room` folder (inventory, drift signals,
+Teams conversation coverage, files). It is a JavaScript canvas with a native
+read-only filesystem helper, not a portable skill, and
+is kept in this repo so it stays in step with the skill whose rules it reads.
+It uses private per-instance launch links, bounded in-room file reads, and
+separate capture/reconciliation signals. Coverage freshness uses current evidence;
+historical or ambiguous sources cannot certify it. Its README includes the
+development test commands. Install it with `npm run install:canvas`; Rust/Cargo
+is required to build the host helper, but not during normal canvas use.
+This does not change the skills' copy-a-folder installation.
+
 ## Install
 
 Each skill is a folder under `skills/`. Install one by copying (or symlinking)

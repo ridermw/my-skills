@@ -51,6 +51,61 @@ All notable changes to the skills in this repo.
   review of #8.
 
 ### Added
+- **`extensions/project-room-browser`** — a Copilot CLI canvas that browses a
+  project room: validity and drift signals, the faceted source inventory, room
+  docs, files, and a Teams page showing per-conversation coverage. Read-only and
+  free of external-service credentials — action buttons generate instructions
+  rather than editing the room. Index, Refresh and reconciliation defer to the
+  relevant `project-room` operation file. Room content is escaped in the UI
+  and quoted in generated prompts.
+  Colours follow the host app's theme variables, with raw fallback tokens when
+  needed; application selectors use the semantic layer.
+
+### Fixed
+- **`project-room-browser` review follow-up (#7)** — private fragment launch
+  capabilities replace secrets embedded in public HTML; image previews use a
+  separate, narrower capability. Manifest reads stay inside the room, previews
+  are bounded, and source-inventory comparison handles Windows separators and
+  deeply nested files. Coverage keeps identity conflicts and missing detail
+  records visible, separates reconciliation from recapture, preserves partial
+  captures until a demonstrably complete replacement exists, and uses the same
+  capture predicate for cards, badges and sweep plans. Also fixed file-preview
+  response ordering, unknown-layout reporting, the narrow rail, and source
+  result-limit validation. Added real filesystem, HTTP, SDK-action and browser
+  regressions with development-only dependencies.
+- **`project-room-browser` second review pass (#7)** — reject oversized
+  metadata before parsing, recognize empty source layouts, retain effective
+  fallback links, and distinguish malformed chat indexes from absent ones.
+  Preserve full prefixed Source IDs and unambiguous conversation ordinals,
+  reject rollover dates, and keep native Windows folder/breadcrumb targets
+  intact. Inventory attribution now compares complete words and identifiers
+  rather than suppressing coverage warnings on substring collisions.
+- **`project-room-browser` evidence and interaction follow-up (#7)** — keep
+  dynamic context inside every generated prompt's data boundary, preserve the
+  room's Source ID format, and select exact IDs from conversation chips. Retain
+  keyboard focus across tab changes and count each inbox file only once.
+  Coverage age uses effective current captures, keeps unregistered captures
+  visible, and rejects ambiguous attribution or unverified dates as freshness
+  evidence. Recognize Unicode conversation names, tilde room paths, and unknown
+  lifecycle warnings; remove obsolete theme-catalogue comments.
+- **`project-room-browser` delayed review follow-up (#7)** — keep long paths
+  intact in generated actions and disclose omitted inbox paths without reducing
+  the total count. Use a cross-platform home lookup, reconcile missing
+  quick-map detail rows even when other captures exist, join unambiguous
+  single-token conversation names, and treat future capture dates as unverified
+  rather than evidence of current coverage.
+- **`project-room-browser` display/coverage consistency (#7)** — derive
+  Overview badges and cards from one warning model, including room validity,
+  lifecycle and layout problems. Share escaped-pipe table parsing between the
+  coverage reader and Markdown preview, and give biweekly cadence precedence
+  over the generic weekly match.
+- **`project-room-browser` identity and unattributed evidence (#7)** — reject
+  duplicate conversation indexes before exposing actions, retain Unicode names
+  in quick-map matching, and keep zero-match conversation artifacts visible for
+  room-level reconciliation. Unavailable sources cannot certify freshness, and
+  binary content is detected even when its filename has a text extension.
+
+### Added
 - **Repository-only regression coverage** — real local Git and room fixtures
   execute the embedded shell examples; frontmatter checks cover portable scalar
   metadata. Agent scenario fixtures cover monitoring freshness, terminal
