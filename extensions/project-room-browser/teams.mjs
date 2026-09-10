@@ -536,10 +536,12 @@ export function refreshTeamsHealth(health) {
     for (const c of conversations) {
         c.effectiveCaptureCount = c.effectiveCaptures.length;
         const recordedIds = new Set(c.captures.map((x) => x.sourceId));
-        const hasUnindexedSource = [...(c.sourceIds || []), ...(c.quickSourceIds || [])]
-            .some((id) => !recordedIds.has(id)) || (c.unregistered || []).length > 0;
-        c.noCaptures = c.effectiveCaptureCount === 0 && !hasUnindexedSource;
-        c.indexDetailGap = hasUnindexedSource;
+        const hasUnindexedId = [...(c.sourceIds || []), ...(c.quickSourceIds || [])]
+            .some((id) => !recordedIds.has(id));
+        const unregistered = c.unregistered || [];
+        c.noCaptures = c.effectiveCaptureCount === 0 && !hasUnindexedId &&
+            !unregistered.some((source) => source.current === true);
+        c.indexDetailGap = hasUnindexedId || unregistered.length > 0;
         c.needsRecapture = !!(
             c.noCaptures || c.authoredIncomplete || (c.isStale && !c.staleDateDisputed) ||
             c.incompleteCaptures.length || c.missingArtifacts.length

@@ -34,6 +34,9 @@ open the project-room canvas for ~/project-rooms/<room>
 
 Conversation age uses effective current captures, while historical captures stay
 visible. Unregistered captures remain reconciliation work regardless of age.
+Their `current` flag records authority/lifecycle eligibility. Historical,
+unavailable, or superseded-only unregistered evidence does not suppress missing
+current captures or remove a conversation from the re-capture sweep.
 A current-complete capture only retires unannotated rows when valid dates prove
 they are no newer; a future or undated replacement cannot do so.
 Ambiguous matches never verify coverage; only a valid, non-future date from a

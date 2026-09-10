@@ -1011,7 +1011,7 @@ test("unique inventory attribution cannot resolve an existing conversation ident
         + "| --- | --- | --- | --- | --- |\n"
         + "| 2 | Alpha chat | `19:fixture-1` | S900 | complete |\n");
     const { teams } = await readRoom(root);
-    assert.deepEqual(teams.conversations[0].unregistered, [source]);
+    assert.deepEqual(teams.conversations[0].unregistered, [{ ...source, current: true }]);
     assert.equal(teams.identityConflicts.length, 1);
     assert.equal(teams.conversations[0].staleDateDisputed, false);
     assert.equal(teams.conversations[0].isStale, true);
@@ -1027,7 +1027,7 @@ test("an unregistered date cannot prove newer coverage when the effective captur
     await put(root, "02_inventory/chat-index.md", index.replace("2020-02-01", "2020-02-30"));
     const { teams } = await readRoom(root);
     const [c] = teams.conversations;
-    assert.deepEqual(c.unregistered, [source]);
+    assert.deepEqual(c.unregistered, [{ ...source, current: true }]);
     assert.equal(c.lastCaptured, null);
     assert.equal(c.unknownCaptureDate, true);
     assert.equal(c.staleDateDisputed, false);
@@ -1048,7 +1048,7 @@ for (const { name, date, disputed } of [
         const { root } = await indexedConversations(t, { sources: [source] });
         const { teams } = await readRoom(root);
         const [c] = teams.conversations;
-        assert.deepEqual(c.unregistered, [source]);
+        assert.deepEqual(c.unregistered, [{ ...source, current: true }]);
         assert.equal(c.lastCaptured, "2020-02-01");
         assert.equal(c.staleDateDisputed, disputed);
         assert.equal(c.isStale, !disputed);
@@ -1060,6 +1060,60 @@ for (const { name, date, disputed } of [
         assert.equal(sweepPlan(teams).targets.length, disputed ? 0 : 1);
     });
 }
+
+for (const { lifecycle, authority, current } of [
+    { lifecycle: "Current", authority: "authoritative", current: true },
+    { lifecycle: "Historical", authority: "authoritative", current: false },
+    { lifecycle: "Unavailable", authority: "authoritative", current: false },
+    { lifecycle: "Unknown", authority: "authoritative", current: false },
+    { lifecycle: "Superseded", authority: "supporting", current: false },
+    { lifecycle: "Current", authority: "superseded", current: false },
+]) {
+    test(`unregistered current coverage eligibility: ${lifecycle} / ${authority}`, async (t) => {
+        const { root } = await fixture(t);
+        await put(root, "02_inventory/chat-index.md",
+            "# Chat index\n\n## 1. Alpha chat\n**chat_id:** `19:alpha`\n");
+        await put(root, "00_originals/alpha-transcript.md", "Fixture capture\n");
+        await put(root, "02_inventory/source_inventory.csv",
+            "Source ID,Path,Source type,Date,Lifecycle,Authority\n"
+            + `S900,00_originals/alpha-transcript.md,transcript,2026-09-08,${lifecycle},${authority}\n`);
+        const { teams } = await readRoom(root);
+        const [c] = teams.conversations;
+        assert.equal(c.noCaptures, !current);
+        assert.equal(c.needsRecapture, !current);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.indexDetailGap, true);
+        assert.deepEqual(c.unregistered, [{
+            id: "S900", path: "00_originals/alpha-transcript.md",
+            date: "2026-09-08", type: "transcript", current,
+        }]);
+        assert.equal(teams.counts.noCaptures, current ? 0 : 1);
+        assert.equal(teams.counts.unregistered, 1);
+        assert.deepEqual(sweepPlan(teams).targets.map((target) => target.index), current ? [] : [1]);
+    });
+}
+
+test("unregistered current evidence remains effective beside historical evidence", async (t) => {
+    const { root } = await fixture(t);
+    await put(root, "02_inventory/chat-index.md",
+        "# Chat index\n\n## 1. Alpha chat\n**chat_id:** `19:alpha`\n");
+    await put(root, "00_originals/alpha-old-transcript.md", "Historical capture\n");
+    await put(root, "00_originals/alpha-current-transcript.md", "Current capture\n");
+    await put(root, "02_inventory/source_inventory.csv",
+        "Source ID,Path,Source type,Date,Lifecycle,Authority\n"
+        + "S900,00_originals/alpha-old-transcript.md,transcript,2026-09-08,Historical,authoritative\n"
+        + "S901,00_originals/alpha-current-transcript.md,transcript,2026-09-08,Current,authoritative\n");
+    const { teams } = await readRoom(root);
+    const [c] = teams.conversations;
+    assert.equal(c.noCaptures, false);
+    assert.equal(c.needsRecapture, false);
+    assert.equal(c.needsReconciliation, true);
+    assert.deepEqual(c.unregistered.map(({ id, current }) => ({ id, current })), [
+        { id: "S900", current: false }, { id: "S901", current: true },
+    ]);
+    assert.equal(teams.counts.unregistered, 2);
+    assert.deepEqual(sweepPlan(teams).targets, []);
+});
 
 for (const { lifecycle, authority, disputed } of [
     { lifecycle: "Historical (abandoned approach)", authority: "supporting", disputed: false },
@@ -1078,7 +1132,7 @@ for (const { lifecycle, authority, disputed } of [
         const { root } = await indexedConversations(t, { sources: [{ ...source, lifecycle, authority }] });
         const room = await readRoom(root);
         const [c] = room.teams.conversations;
-        assert.deepEqual(c.unregistered, [source]);
+        assert.deepEqual(c.unregistered, [{ ...source, current: disputed }]);
         assert.equal(c.needsReconciliation, true);
         assert.equal(c.staleDateDisputed, disputed);
         assert.equal(c.isStale, !disputed);
@@ -1099,7 +1153,7 @@ test("Unicode conversation tokens attribute only the exact distinctive inventory
         names: ["\u9879\u76ee\u51e4\u51f0", "\u9879\u76ee\u767d\u9e6d"], sources: [source],
     });
     const { teams } = await readRoom(root);
-    assert.deepEqual(teams.conversations[0].unregistered, [source]);
+    assert.deepEqual(teams.conversations[0].unregistered, [{ ...source, current: true }]);
     assert.deepEqual(teams.conversations[1].unregistered, []);
     assert.equal(teams.conversations[0].staleDateDisputed, true);
     assert.equal(teams.conversations[1].isStale, true);
@@ -1228,7 +1282,7 @@ test("unattributed capture inventory rows remain separate from assigned sources 
     assert.equal(teams.counts.unattributedCaptures, 1);
     assert.equal(teams.counts.attributionConflicts, 1);
     assert.equal(teams.counts.unregistered, 1);
-    assert.deepEqual(teams.conversations[0].unregistered, [sources[2]]);
+    assert.deepEqual(teams.conversations[0].unregistered, [{ ...sources[2], current: true }]);
     assert.deepEqual(teams.conversations[1].unregistered, []);
     assert.ok(teams.conversations.every((c) => c.isStale && !c.staleDateDisputed));
     const plan = sweepPlan(teams);

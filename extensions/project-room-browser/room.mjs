@@ -535,7 +535,6 @@ export async function readRoom(roomPath) {
         const byConversation = new Map();
         const attributionConflicts = [];
         const unattributedCaptures = [];
-        const recencySources = new Set();
         for (const s of sources) {
             const id = String(s["Source ID"] || "");
             if (!id || registered.has(id)) continue;
@@ -548,9 +547,9 @@ export async function readRoom(roomPath) {
             const source = { id, date: s.Date ?? null, path: s.Path ?? null, type: s["Source type"] ?? null };
             if (candidates.length === 1) {
                 const [c] = candidates;
+                source.current = !isNotCurrent(s);
                 if (!byConversation.has(c.index)) byConversation.set(c.index, []);
                 byConversation.get(c.index).push(source);
-                if (!isNotCurrent(s)) recencySources.add(source);
             } else if (candidates.length > 1) {
                 attributionConflicts.push({
                     source,
@@ -560,7 +559,7 @@ export async function readRoom(roomPath) {
                 unattributedCaptures.push(source);
             }
         }
-        return { byConversation, attributionConflicts, unattributedCaptures, recencySources };
+        return { byConversation, attributionConflicts, unattributedCaptures };
     }
 
     try {
@@ -582,7 +581,7 @@ export async function readRoom(roomPath) {
                 c.staleDateDisputed = c.identityConflicts.length === 0 && last != null &&
                     c.unregistered.some((source) => {
                         const captured = isoDateTime(source.date);
-                        return extra.recencySources.has(source) && captured != null && captured <= now && captured > last;
+                        return source.current && captured != null && captured <= now && captured > last;
                     });
                 if (c.staleDateDisputed) c.isStale = false;
             }

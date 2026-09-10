@@ -299,7 +299,7 @@ test("refreshTeamsHealth removes stale-only sweep targets but preserves health m
     const captures = c.captures;
     const knownGaps = health.knownGaps;
     assert.equal(c.needsRecapture, true);
-    c.unregistered = [{ id: "S002", date: "2026-09-08", path: "new.json", type: "chat" }];
+    c.unregistered = [{ id: "S002", date: "2026-09-08", path: "new.json", type: "chat", current: true }];
     c.staleDateDisputed = true;
     c.isStale = false;
     const refreshed = teams.refreshTeamsHealth(health);
@@ -345,7 +345,7 @@ for (const evidence of ["incomplete", "authored", "artifact", "no-source"]) {
         const [c] = health.conversations;
         c.staleDateDisputed = true;
         c.isStale = false;
-        if (evidence !== "no-source") c.unregistered = [{ id: "S002", path: "new.json" }];
+        if (evidence !== "no-source") c.unregistered = [{ id: "S002", path: "new.json", current: true }];
         assert.equal(typeof teams.refreshTeamsHealth, "function");
         teams.refreshTeamsHealth(health);
         assert.equal(c.needsRecapture, true);
@@ -356,10 +356,26 @@ for (const evidence of ["incomplete", "authored", "artifact", "no-source"]) {
     });
 }
 
-test("an inventory source without detail rows is a reconciliation gap, not no-source evidence", () => {
+for (const [current, recapture] of [[false, true], [undefined, true], ["true", true], [true, false]]) {
+    test(`unregistered current eligibility ${typeof current} ${String(current)} controls the real sweep`, () => {
+        const health = healthFor();
+        const [c] = health.conversations;
+        c.unregistered = [{ id: "S009", path: "capture.json", current }];
+        teams.refreshTeamsHealth(health);
+        assert.equal(c.noCaptures, recapture);
+        assert.equal(c.needsRecapture, recapture);
+        assert.equal(c.needsReconciliation, true);
+        assert.equal(c.indexDetailGap, true);
+        assert.equal(health.counts.noCaptures, recapture ? 1 : 0);
+        assert.equal(health.counts.unregistered, 1);
+        assert.deepEqual(teams.sweepPlan(health).targets.map((target) => target.index), recapture ? [1] : []);
+    });
+}
+
+test("a current inventory source without detail rows is a reconciliation gap, not no-source evidence", () => {
     const health = healthFor();
     const [c] = health.conversations;
-    c.unregistered = [{ id: "S009", path: "capture.json" }];
+    c.unregistered = [{ id: "S009", path: "capture.json", current: true }];
     assert.equal(typeof teams.refreshTeamsHealth, "function");
     teams.refreshTeamsHealth(health);
     assert.equal(c.noCaptures, false);
@@ -744,7 +760,7 @@ test("a missing current capture date remains a reconciliation problem after inve
     assert.equal(c.hasProblem, true);
     assert.equal(health.counts.unknownCaptureDate, 1);
     assert.equal(health.counts.hasProblem, 1);
-    c.unregistered = [{ id: "S002", path: "new.json", date: "2026-09-08" }];
+    c.unregistered = [{ id: "S002", path: "new.json", date: "2026-09-08", current: true }];
     c.staleDateDisputed = true;
     teams.refreshTeamsHealth(health);
     assert.equal(c.unknownCaptureDate, true);
@@ -851,7 +867,7 @@ test("history-only captures retain display metadata without certifying current c
     assert.equal(health.counts.noCaptures, 1);
     assert.deepEqual(teams.sweepPlan(health).targets, [c]);
 
-    c.unregistered = [{ id: "S002", path: "unindexed.json" }];
+    c.unregistered = [{ id: "S002", path: "unindexed.json", current: true }];
     teams.refreshTeamsHealth(health);
     assert.equal(c.effectiveCaptureCount, 0);
     assert.equal(c.captures.length, 1);
