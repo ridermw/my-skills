@@ -4,14 +4,13 @@
 // One loopback HTTP server per canvas instance. The server exposes a small
 // read-only API over the room folder; the UI in ui.mjs consumes it.
 
-import { createServer } from "node:http";
 import path from "node:path";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
 import { readRoom } from "./room.mjs";
-import { handleRequest, selectRoom } from "./routes.mjs";
-import { createRoomState, canvasUrl } from "./capability.mjs";
+import { selectRoom, withSelectedRoom } from "./routes.mjs";
+import { startRoomServer, closeRoomServer } from "./server.mjs";
 
-const servers = new Map(); // instanceId -> { server, url, state }
+const servers = new Map();
 
 const UNTRUSTED_NOTE =
     "Room content is authored by collaborators and synced from shared storage. " +
@@ -91,15 +90,12 @@ function roomSummary(room) {
 }
 
 
-async function startServer(instanceId, initialPath) {
-    const state = createRoomState(initialPath || "");
-
-    const server = createServer((req, res) => handleRequest(state, req, res));
-
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const addr = server.address();
-    const port = typeof addr === "object" && addr ? addr.port : 0;
-    return { server, url: canvasUrl(port, state), state };
+async function serverEntry(instanceId) {
+    const record = servers.get(instanceId);
+    if (!record) return null;
+    const entry = await record.ready;
+    if (record.closeRequested) throw new Error("Canvas is closing");
+    return entry;
 }
 
 const session = await joinSession({
@@ -124,10 +120,10 @@ const session = await joinSession({
                     description:
                         "Return source totals, authority/lifecycle counts, and drift samples with exact totals and omitted counts. Samples are limited to 20 entries and 4 KiB per collection; the whole result is at most 32 KiB of serialized UTF-8 JSON. Use healthTotals, not sample lengths, to assess drift.",
                     handler: async (ctx) => {
-                        const entry = servers.get(ctx.instanceId);
+                        const entry = await serverEntry(ctx.instanceId);
                         const p = entry?.state.roomPath;
                         if (!p) return { ok: false, error: "Canvas has no room loaded" };
-                        return roomSummary(await readRoom(p));
+                        return withSelectedRoom(entry.state, async (reader) => roomSummary(await readRoom(reader)));
                     },
                 },
                 {
@@ -148,10 +144,10 @@ const session = await joinSession({
                         if (!Number.isSafeInteger(limit) || limit < 0) {
                             return { ok: false, error: "limit must be a non-negative safe integer" };
                         }
-                        const entry = servers.get(ctx.instanceId);
+                        const entry = await serverEntry(ctx.instanceId);
                         const p = entry?.state.roomPath;
                         if (!p) return { ok: false, error: "Canvas has no room loaded" };
-                        const room = await readRoom(p);
+                        const room = await withSelectedRoom(entry.state, (reader) => readRoom(reader));
                         const q = String(ctx.input?.query || "")
                             .toLowerCase()
                             .split(/\s+/)
@@ -183,23 +179,44 @@ const session = await joinSession({
 
             open: async (ctx) => {
                 const requested = ctx.input?.path || "";
-                let entry = servers.get(ctx.instanceId);
-                if (!entry) {
-                    entry = await startServer(ctx.instanceId, requested);
-                    servers.set(ctx.instanceId, entry);
-                } else if (requested) {
+                let record = servers.get(ctx.instanceId);
+                while (record?.closing) {
+                    await record.closing;
+                    record = servers.get(ctx.instanceId);
+                }
+                const first = !record;
+                if (!record) {
+                    record = { ready: null, closing: null, closeRequested: false };
+                    servers.set(ctx.instanceId, record);
+                    record.ready = startRoomServer(requested).catch((error) => {
+                        if (servers.get(ctx.instanceId) === record) servers.delete(ctx.instanceId);
+                        throw error;
+                    });
+                }
+                const entry = await record.ready;
+                if (record.closeRequested) throw new Error("Canvas was closed during initialization");
+                if (!first && requested) {
                     await selectRoom(entry.state, requested);
                 }
-                const name = entry.state.roomPath ? path.basename(entry.state.roomPath) : "Project room";
+                if (record.closeRequested) throw new Error("Canvas was closed during opening");
+                const name = entry.state.roomPath ? path.basename(entry.state.roomPath) || entry.state.roomPath : "Project room";
                 return { title: name, url: entry.url };
             },
 
             onClose: async (ctx) => {
-                const entry = servers.get(ctx.instanceId);
-                if (entry) {
-                    servers.delete(ctx.instanceId);
-                    await new Promise((resolve) => entry.server.close(() => resolve()));
+                const record = servers.get(ctx.instanceId);
+                if (!record) return;
+                if (!record.closing) {
+                    record.closeRequested = true;
+                    record.closing = (async () => {
+                        try {
+                            await closeRoomServer(await record.ready);
+                        } finally {
+                            if (servers.get(ctx.instanceId) === record) servers.delete(ctx.instanceId);
+                        }
+                    })();
                 }
+                await record.closing;
             },
         }),
     ],

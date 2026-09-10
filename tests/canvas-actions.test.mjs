@@ -3,7 +3,7 @@ import test from "node:test";
 import { registerHooks } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { makeRoom } from "./helpers/canvas-fixture.mjs";
+import { makeRoom, afterRoomResources } from "./helpers/canvas-fixture.mjs";
 
 const sdk = "data:text/javascript," + encodeURIComponent(`
     export const createCanvas = (definition) => definition;
@@ -43,7 +43,7 @@ async function openFixture(t, count = 25) {
     const root = await makeRoom(t, count);
     const instanceId = `test-${nextInstance++}`;
     const opened = await canvas.open({ instanceId, input: { path: root } });
-    t.after(() => canvas.onClose({ instanceId }));
+    afterRoomResources(t, () => canvas.onClose({ instanceId }));
     return { root, instanceId, opened };
 }
 

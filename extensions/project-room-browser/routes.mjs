@@ -10,36 +10,8 @@ import path from "node:path";
 import { readRoom, readRoomFile, readRoomBytes, listSiblingRooms, browseDir, suggestStartingPoints } from "./room.mjs";
 import { sweepPlan } from "./teams.mjs";
 import { renderShell } from "./ui.mjs";
-
-const selections = new WeakMap();
-
-function selectionError(code, message) {
-    return Object.assign(new Error(message), { code });
-}
-
-export async function selectRoom(state, requested) {
-    const selection = {};
-    selections.set(state, selection);
-    const assertCurrent = () => {
-        if (selections.get(state) !== selection) {
-            throw selectionError("ROOM_SELECTION_SUPERSEDED", "Room selection was superseded by a newer request");
-        }
-    };
-    try {
-        const p = requested || state.roomPath;
-        if (!p) throw selectionError("ROOM_NOT_SELECTED", "No room is open");
-        const room = await readRoom(p);
-        assertCurrent();
-        state.roomPath = room.root;
-        return room;
-    } catch (error) {
-        assertCurrent();
-        throw error;
-    } finally {
-        // Removing a completed latest selection still invalidates older tokens.
-        if (selections.get(state) === selection) selections.delete(state);
-    }
-}
+import { selectRoom, withSelectedRoom } from "./selection.mjs";
+export { selectRoom, withSelectedRoom, disposeRoomState } from "./selection.mjs";
 
 export function json(res, code, body) {
     res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -71,7 +43,7 @@ export async function handleRequest(state, req, res) {
         }
         if (url.pathname === "/api/teams/sweep") {
             if (!state.roomPath) return json(res, 409, { ok: false, error: "No room is open." });
-            const room = await readRoom(state.roomPath);
+            const room = await withSelectedRoom(state, (reader) => readRoom(reader));
             if (!room.teams) return json(res, 200, { ok: false, error: "This room has no chat index to sweep." });
             if (room.teams.error) return json(res, 200, { ok: false, error: room.teams.error });
             const plan = sweepPlan(room.teams, { roomName: room.name });
@@ -91,7 +63,7 @@ export async function handleRequest(state, req, res) {
             const rel = url.searchParams.get("rel") || "";
             if (!p) return json(res, 409, { ok: false, error: "No room is open" });
             if (!rel) return json(res, 400, { ok: false, error: "rel is required" });
-            return json(res, 200, { ok: true, file: await readRoomFile(p, rel) });
+            return json(res, 200, { ok: true, file: await withSelectedRoom(state, (reader) => readRoomFile(reader, rel)) });
         }
 
         if (url.pathname === "/api/raw") {
@@ -99,7 +71,7 @@ export async function handleRequest(state, req, res) {
             const rel = url.searchParams.get("rel") || "";
             if (!p) return json(res, 409, { ok: false, error: "No room is open" });
             if (!rel) return json(res, 400, { ok: false, error: "rel is required" });
-            const { buf, mime } = await readRoomBytes(p, rel);
+            const { buf, mime } = await withSelectedRoom(state, (reader) => readRoomBytes(reader, rel));
             // SVG can carry script and this origin also serves /api/file, so
             // sandbox the response and forbid MIME sniffing.
             res.writeHead(200, {
@@ -134,7 +106,7 @@ export async function handleRequest(state, req, res) {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
         res.end(renderShell());
     } catch (err) {
-        const conflict = err?.code === "ROOM_NOT_SELECTED" || err?.code === "ROOM_SELECTION_SUPERSEDED";
+        const conflict = ["ROOM_NOT_SELECTED", "ROOM_SELECTION_SUPERSEDED", "ROOM_CLOSED"].includes(err?.code);
         json(res, conflict ? 409 : 500, {
             ok: false,
             ...(conflict ? { code: err.code } : {}),

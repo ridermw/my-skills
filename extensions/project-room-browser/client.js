@@ -217,7 +217,7 @@ async function load(pathOverride) {
         }
     };
     try {
-        const p = pathOverride || window.__ROOM_PATH__ || "";
+        const p = pathOverride || "";
         const r = await api("/api/room" + (p ? "?path=" + encodeURIComponent(p) : ""));
         const j = await r.json();
         assertCurrent();

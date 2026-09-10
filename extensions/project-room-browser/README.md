@@ -7,14 +7,22 @@ signals, room docs, files, and Teams conversation coverage.
 > **This is not a skill.** Skills in [`skills/`](../../skills/) are portable
 > markdown you copy into any agent. This is JavaScript that runs a local
 > HTTP server and renders a UI, so it only works in Copilot CLI and needs
-> Node. It is kept here so it stays in step with the skill it reads — the two
+> Node plus its host-native reader. It is kept here so it stays in step with the skill it reads — the two
 > encode the same rules, and when the skill's rules change this must follow.
 
 ## Install
 
 ```bash
-cp -R extensions/project-room-browser ~/.copilot/extensions/project-room-browser
+npm run install:canvas
 ```
+
+Run this from the repository root with Rust/Cargo and Node installed. Close
+existing project-room canvases before updating. The installer builds a locked
+host-native helper and copies only runtime files, preserving unrelated files
+in an existing installation. It does not copy Cargo build output.
+Use `-- --destination /absolute/path/project-room-browser` with the npm command
+to choose another extension location. Normal use needs Node and the installed
+helper, not Rust; a missing or incompatible helper is an explicit error.
 
 Then open it from an agent session, optionally with a room path:
 
@@ -116,6 +124,10 @@ Same-room refreshes and failed loads preserve that state.
 HTTP selections and SDK reopens share last-request ordering. An older read
 cannot replace the latest selection, even when the latest request fails;
 the previously committed room stays selected in that case.
+Refresh, previews, and SDK queries reuse the selected directory handle.
+An explicit Open creates a new grant, including when reopening the same path.
+Initialization and close share server ownership; obsolete candidates and
+retired readers are disposed rather than leaving unmanaged servers or helpers.
 View updates preserve logical keyboard focus and text selection, or move to a
 visible destination control. Date sorting uses the same calendar validation as
 coverage; unusable dates stay last in both directions.
@@ -133,11 +145,16 @@ Cross-site requests are refused even with a capability. This is an HTTP
 access boundary, not isolation from processes that can inspect the CLI's
 memory or private launch-link records.
 
-Manifest-selected files are checked for room containment, including through
-symlinks. **Known limitation:** validation and filesystem access are not atomic.
-Concurrent replacement of a file or ancestor can evade these checks; the current
-reader must not be treated as a race-safe boundary for an untrusted,
-concurrently modified room.
+Room metadata, traversal, identities, and previews use native directory
+capabilities. File metadata and bytes come from opened handles; replacing a
+checked pathname cannot redirect a later ambient open. The selected directory
+object remains the grant until an explicit Open replaces it. This is not a
+transactional snapshot of a changing room.
+Internal symlinks are supported, including root aliases recorded during
+selection. External aliases, dangling links, and link cycles are refused.
+There is no JavaScript pathname fallback. Generated instructions still name
+paths, not transferable native handles: review their current targets before
+running maintenance.
 
 Metadata files are limited to 2 MiB each and rejected rather than
 partially parsed. An unterminated quoted inventory field rejects the room read
@@ -160,6 +177,7 @@ filesystem/parser, real HTTP, SDK-action, and browser regressions:
 
 ```bash
 npm ci
+npm run test:canvas:native
 npm run test:canvas
 npm run test:canvas:browser
 ```
@@ -167,7 +185,9 @@ npm run test:canvas:browser
 The tests use Node's built-in runner (Node 22.15 or newer) and Playwright with
 synthetic rooms. If Chromium is not installed, run
 `npx playwright install chromium` before the browser suite. These dependencies
-are development-only; copying this extension does not require an npm install.
+are development-only. The native build uses `Cargo.lock`; the installer does
+not require an npm dependency installation. Native and Node CI runs on macOS,
+Linux, and Windows; browser and inherited Python CI runs on Linux.
 
 `serve.mjs` runs the same request handler as the real extension (both delegate
 to `routes.mjs`). From this extension's directory:

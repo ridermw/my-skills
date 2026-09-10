@@ -2,8 +2,10 @@ use crate::protocol::{
     DirectoryEntry, FileStat, ReaderError, Request, Response, Result, MAX_BATCH, MAX_HANDLES,
     MAX_HEADER, MAX_PAYLOAD, MAX_SAFE_INTEGER,
 };
+use cap_fs_ext::DirExt;
 use cap_std::fs::{Dir, File, FileType, Metadata, ReadDir};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::ffi::OsString;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -21,10 +23,76 @@ enum Handle {
 
 pub struct Access {
     root: Dir,
-    entered_root: PathBuf,
-    canonical_root: PathBuf,
+    aliases: Vec<PathBuf>,
     handles: BTreeMap<u32, Handle>,
     next_handle: u32,
+}
+
+struct Resolved {
+    parent: Dir,
+    leaf: OsString,
+    relative: PathBuf,
+}
+
+enum Piece {
+    Name(OsString, bool),
+    Parent(bool),
+}
+
+fn pieces(path: &Path, required: bool) -> Result<VecDeque<Piece>> {
+    let mut result = VecDeque::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(name) => result.push_back(Piece::Name(name.to_owned(), required)),
+            Component::ParentDir => result.push_back(Piece::Parent(required)),
+            Component::CurDir => {}
+            Component::RootDir | Component::Prefix(_) => return Err(ReaderError::escape()),
+        }
+    }
+    Ok(result)
+}
+
+fn root_aliases(entered: &Path, canonical: &Path) -> Result<Vec<PathBuf>> {
+    let mut aliases = vec![entered.to_path_buf(), canonical.to_path_buf()];
+    let mut current = entered.to_path_buf();
+    for _ in 0..40 {
+        let mut prefix = PathBuf::new();
+        let mut components = current.components();
+        let mut replacement = None;
+        while let Some(component) = components.next() {
+            prefix.push(component);
+            if !prefix.is_absolute() || !std::fs::symlink_metadata(&prefix)?.is_symlink() {
+                continue;
+            }
+            let target = std::fs::read_link(&prefix)?;
+            let mut replaced = if target.is_absolute() {
+                target
+            } else {
+                prefix
+                    .parent()
+                    .ok_or_else(ReaderError::escape)?
+                    .join(target)
+            };
+            replaced.extend(components);
+            replacement = Some(replaced);
+            break;
+        }
+        match replacement {
+            Some(replaced) => {
+                aliases.push(replaced.clone());
+                current = replaced;
+            }
+            None => {
+                aliases.sort_by_key(|alias| std::cmp::Reverse(alias.components().count()));
+                aliases.dedup();
+                return Ok(aliases);
+            }
+        }
+    }
+    Err(ReaderError::new(
+        "ROOM_READER_ROOT",
+        "Refused: excessive links in selected root",
+    ))
 }
 
 fn file_type(kind: FileType) -> &'static str {
@@ -98,10 +166,10 @@ impl Access {
         // Ambient authority is used only to establish the explicitly selected root.
         let canonical_root = std::fs::canonicalize(&root)?;
         let directory = Dir::open_ambient_dir(&canonical_root, cap_std::ambient_authority())?;
+        let aliases = root_aliases(&root, &canonical_root)?;
         Ok(Self {
             root: directory,
-            entered_root: root,
-            canonical_root,
+            aliases,
             handles: BTreeMap::new(),
             next_handle: 1,
         })
@@ -120,67 +188,88 @@ impl Access {
         Ok(path)
     }
 
-    fn resolve(&self, rel: &str) -> Result<PathBuf> {
+    fn resolve(&self, rel: &str) -> Result<Resolved> {
         let path = self.checked_relative(rel)?;
         // Canonicalization can open a FIFO without O_NONBLOCK on macOS.
-        // Inspect links without opening the final file, then use bounded handles.
-        self.resolve_links(path, &mut 0).map(|resolved| {
-            if resolved.as_os_str().is_empty() {
-                PathBuf::from(".")
-            } else {
-                resolved
-            }
-        })
-    }
-
-    fn resolve_links(&self, path: &Path, links: &mut usize) -> Result<PathBuf> {
+        // One-component capabilities also avoid retaining a descriptor per depth.
+        let mut pending = pieces(path, false)?;
+        let mut current = self.root.try_clone()?;
         let mut resolved = PathBuf::new();
-        for component in path.components() {
-            match component {
-                Component::RootDir | Component::Prefix(_) => return Err(ReaderError::escape()),
-                Component::CurDir => {}
-                Component::ParentDir => {
+        let mut links = 0;
+        while let Some(piece) = pending.pop_front() {
+            match piece {
+                Piece::Parent(required) => {
                     if !resolved.pop() {
                         return Err(ReaderError::escape());
                     }
+                    let mut prefix = pieces(&resolved, required)?;
+                    prefix.append(&mut pending);
+                    pending = prefix;
+                    current = self.root.try_clone()?;
+                    resolved.clear();
                 }
-                Component::Normal(name) => {
-                    let candidate = resolved.join(name);
-                    if self.root.symlink_metadata(&candidate)?.is_symlink() {
-                        *links += 1;
-                        if *links > 40 {
+                Piece::Name(name, required) => {
+                    let metadata = current.symlink_metadata(&name).map_err(|error| {
+                        if required && error.kind() == std::io::ErrorKind::NotFound {
+                            ReaderError::new(
+                                "ROOM_READER_SYMLINK",
+                                "Refused: dangling symlink cannot be treated as absence",
+                            )
+                        } else {
+                            error.into()
+                        }
+                    })?;
+                    if metadata.is_symlink() {
+                        links += 1;
+                        if links > 40 {
                             return Err(ReaderError::new(
                                 "ROOM_READER_SYMLINK",
                                 "Refused: symlink loop or excessive link depth",
                             ));
                         }
-                        let target = self.root.read_link_contents(&candidate)?;
+                        let target = current.read_link_contents(&name)?;
                         let target = if target.is_absolute() {
-                            target
-                                .strip_prefix(&self.canonical_root)
-                                .or_else(|_| target.strip_prefix(&self.entered_root))
+                            self.aliases
+                                .iter()
+                                .find_map(|alias| target.strip_prefix(alias).ok())
                                 .map(Path::to_path_buf)
-                                .map_err(|_| ReaderError::escape())?
+                                .ok_or_else(ReaderError::escape)?
                         } else {
                             resolved.join(target)
                         };
-                        resolved = self.resolve_links(&target, links).map_err(|error| {
-                            if error.code == "ENOENT" {
-                                ReaderError::new(
-                                    "ROOM_READER_SYMLINK",
-                                    "Refused: dangling symlink cannot be treated as absence",
-                                )
-                            } else {
-                                error
-                            }
-                        })?;
+                        let mut target = pieces(&target, true)?;
+                        target.append(&mut pending);
+                        pending = target;
+                        current = self.root.try_clone()?;
+                        resolved.clear();
+                    } else if pending.is_empty() {
+                        return Ok(Resolved {
+                            parent: current,
+                            relative: resolved.join(&name),
+                            leaf: name,
+                        });
                     } else {
-                        resolved = candidate;
+                        if !metadata.is_dir() {
+                            return Err(ReaderError::new(
+                                "ENOTDIR",
+                                "Not a directory in room path",
+                            ));
+                        }
+                        current = current.open_dir_nofollow(&name)?;
+                        resolved.push(name);
                     }
                 }
             }
         }
-        Ok(resolved)
+        Ok(Resolved {
+            parent: current,
+            leaf: OsString::from("."),
+            relative: if resolved.as_os_str().is_empty() {
+                PathBuf::from(".")
+            } else {
+                resolved
+            },
+        })
     }
 
     fn available_handle(&self) -> Result<u32> {
@@ -212,10 +301,11 @@ impl Access {
                     use cap_std::fs::OpenOptionsExt;
                     options.custom_flags(libc::O_NONBLOCK);
                 }
-                let file = self.root.open_with(&resolved, &options)?;
+                let file = resolved.parent.open_with(&resolved.leaf, &options)?;
                 response.stat = Some(metadata(&file.metadata()?)?);
                 response.resolved_rel = Some(
                     resolved
+                        .relative
                         .to_str()
                         .ok_or_else(|| {
                             ReaderError::new("ROOM_READER_PATH", "Refused: path is not valid UTF-8")
@@ -247,7 +337,7 @@ impl Access {
             Request::OpenDirectory { rel, .. } => {
                 let id = self.available_handle()?;
                 let resolved = self.resolve(&rel)?;
-                let entries = self.root.read_dir(&resolved)?;
+                let entries = resolved.parent.read_dir(&resolved.leaf)?;
                 self.register(
                     id,
                     Handle::Directory(Directory {

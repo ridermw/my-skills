@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs/promises";
-import { registerHooks, syncBuiltinESMExports } from "node:module";
+import { registerHooks } from "node:module";
 import path from "node:path";
-import { makeRoom, serveRoom } from "./helpers/canvas-fixture.mjs";
+import { makeRoom, serveRoom, afterRoomResources } from "./helpers/canvas-fixture.mjs";
+import { RoomReader } from "../extensions/project-room-browser/reader.mjs";
 
 const sdk = "data:text/javascript," + encodeURIComponent(`
     export const createCanvas = (definition) => definition;
@@ -27,22 +28,20 @@ let nextInstance = 0;
 function pauseScan(t, root, fail = false) {
     const entered = Promise.withResolvers();
     const gate = Promise.withResolvers();
-    const opendir = fs.opendir;
+    const opendir = RoomReader.prototype.openDirectory;
     let pending = true;
-    const stub = t.mock.method(fs, "opendir", async (target, ...args) => {
-        if (target === root && pending) {
+    const stub = t.mock.method(RoomReader.prototype, "openDirectory", async function (relative) {
+        if (this.root === root && relative === "." && pending) {
             pending = false;
             entered.resolve();
             await gate.promise;
             if (fail) throw Object.assign(new Error("Fixture scan failed"), { code: "EACCES" });
         }
-        return opendir(target, ...args);
+        return opendir.call(this, relative);
     });
-    syncBuiltinESMExports();
     t.after(() => {
         gate.resolve();
         stub.mock.restore();
-        syncBuiltinESMExports();
     });
     return { entered: entered.promise, release: gate.resolve };
 }
@@ -161,7 +160,7 @@ test("room selection concurrency: separate canvas instances do not cancel each o
 async function sdkFixture(t, root) {
     const instanceId = `selection-${nextInstance++}`;
     const opened = await canvas.open({ instanceId, input: root ? { path: root } : {} });
-    t.after(() => canvas.onClose({ instanceId }));
+    afterRoomResources(t, () => canvas.onClose({ instanceId }));
     const url = new URL(opened.url);
     const token = new URLSearchParams(url.hash.slice(1)).get("token");
     return { instanceId, opened, origin: url.origin, token };

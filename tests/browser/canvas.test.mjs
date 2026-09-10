@@ -3,7 +3,7 @@ import { before, after, test } from "node:test";
 import { cp, mkdir, rename, truncate, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
-import { makeRoom, serveRoom } from "../helpers/canvas-fixture.mjs";
+import { makeRoom, serveRoom, afterRoomResources } from "../helpers/canvas-fixture.mjs";
 import { readRoom } from "../../extensions/project-room-browser/room.mjs";
 
 let browser;
@@ -13,7 +13,7 @@ after(async () => { if (browser) await browser.close(); });
 async function openPage(t, root, width = 1100, beforeLoad) {
     const server = await serveRoom(t, root);
     const context = await browser.newContext({ viewport: { width, height: 800 } });
-    t.after(() => context.close());
+    afterRoomResources(t, () => context.close());
     const page = await context.newPage();
     page.setDefaultTimeout(5000);
     const errors = [];
@@ -127,7 +127,7 @@ test("private picker bootstrap and room switching preserve authenticated file ac
     await writeFile(path.join(second, "00_originals/source-1.txt"), "Second room contents\n");
     const server = await serveRoom(t, "");
     const context = await browser.newContext();
-    t.after(() => context.close());
+    afterRoomResources(t, () => context.close());
     const page = await context.newPage();
     page.setDefaultTimeout(5000);
     // Keep home-directory discovery out of synthetic-room browser tests.
@@ -744,7 +744,7 @@ for (const entryPoint of ["openRoom", "bootstrap"]) {
         await writeFile(path.join(external, "00_originals/source-1.txt"), "Externally selected contents\n");
         const { origin, url, state } = await serveRoom(t, prior);
         const context = await browser.newContext();
-        t.after(() => context.close());
+        afterRoomResources(t, () => context.close());
         const page = await context.newPage();
         page.setDefaultTimeout(5000);
         const errors = [];
@@ -799,7 +799,7 @@ for (const lateFailure of [false, true]) {
         const newer = await makeRoom(t);
         const server = await serveRoom(t, prior);
         const context = await browser.newContext();
-        t.after(() => context.close());
+        afterRoomResources(t, () => context.close());
         const page = await context.newPage();
         const gate = Promise.withResolvers();
         const entered = Promise.withResolvers();

@@ -1,8 +1,8 @@
 # Native room reader
 
 A read-only Rust helper for directory-capability-based room access. The
-JavaScript canvas integration is not yet complete; adding this executable
-alone does not repair the currently documented browser containment race.
+JavaScript canvas routes every room read through this helper. HTTP and SDK
+operations share a retained grant rather than reopening the selected pathname.
 
 From the repository root:
 
@@ -19,8 +19,10 @@ output are not committed. An unchanged executable is not replaced.
 The executable takes one absolute room root argument and retains its
 directory capability. Requests may name only relative paths or handles it
 issued. File reads, metadata, and directory enumeration use that capability,
-not ambient pathname opens. Internal absolute links are rebased only under
-the entered or canonical room root. External aliases, dangling links and
+not ambient pathname opens. Path walking uses one-component directory
+capabilities, so depth does not retain a descriptor per ancestor. Internal
+absolute links are rebased only under aliases recorded while opening the
+selected root. External aliases, dangling links and
 cycles are refused.
 
 The protocol is UTF-8 JSON headers terminated by LF, followed by exactly
