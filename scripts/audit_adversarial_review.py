@@ -151,7 +151,7 @@ def turn_messages(events, turn, after):
 
 
 def ratio(part, whole):
-    return round(part / whole, 4) if whole else None
+    return part / whole if whole else None
 
 
 def audit(state_dir, baseline, skill_text):
@@ -247,7 +247,8 @@ def main(argv=None):
         print(f"expected: Updated {result['expected']['updated']}, sha256 {result['expected']['content_hash'][:12]}")
         for key in ("loads_success", "subagent_share", "disclosure_rate", "freshness_rate",
                     "duplicate_turns", "expected_hash_share"):
-            print(f"{key}: {m[key]}")
+            value = m[key]
+            print(f"{key}: {round(value, 4) if isinstance(value, float) else value}")
     return {"pass": 0, "fail": 1}.get(result["status"], 2)
 
 

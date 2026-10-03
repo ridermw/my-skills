@@ -290,6 +290,18 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["subagent_share"], 0.1)
         self.assertFalse(result["checks"]["subagent_share"])
 
+    def test_strict_checks_use_unrounded_ratios(self):
+        s = Session(self.root, "a")
+        s.user()
+        s.agent_load("call-1")
+        s.say(DISCLOSED)
+        s.agent_load("call-2", agent="reviewer-1")
+        s.agent_load("call-3", agent="reviewer-2")
+        s.write()
+        base = baseline(min_loads=3)
+        base["thresholds"]["subagent_share_below"] = 0.6667
+        self.assertTrue(self.run_audit(base)["checks"]["subagent_share"])
+
     def test_cli_exit_codes_and_read_only_output(self):
         s = Session(self.root, "a")
         s.user()
