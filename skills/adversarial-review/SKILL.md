@@ -29,7 +29,7 @@ Every reviewer prompt starts with this exact line:
 Reviewer guard: You are a reviewer launched by adversarial-review. Do not load the adversarial-review skill. Do not launch agents or tasks. Review only the target below and return findings in the requested schema.
 ```
 
-If your own prompt starts with `Reviewer guard:`, you are a reviewer. Do not choose a mode, launch agents, or load this skill. Review the target with the Premortem Pass, Review Constitution, Severity and Confidence Calibration, and Evidence Standards, and return the Reviewer Output Schema.
+If your own prompt starts with `Reviewer guard:`, you are a reviewer. Do not choose a mode, launch agents, or load this skill. Review the target with the Premortem Pass, Review Constitution, Severity and Confidence Calibration, and Evidence Standards. Return the output your prompt requests: the Reviewer Output Schema for Rubber Duck, or the strongest objection, strongest support, hidden assumption, and failure mode for a SPAR role.
 
 ## Overview
 

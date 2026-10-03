@@ -500,6 +500,7 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(guard, r"Do not load the adversarial-review skill\.")
         self.assertRegex(guard, r"Do not launch agents")
         self.assertNotIn("Do not follow the rest of this skill", guard)
+        self.assertIn("strongest objection", guard, "SPAR reviewers return role fields")
         for kept in ("Premortem Pass", "Review Constitution", "Reviewer Output Schema",
                      "Severity and Confidence Calibration", "Evidence Standards"):
             self.assertIn(kept, guard)
