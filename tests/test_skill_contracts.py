@@ -518,7 +518,9 @@ class AdversarialReviewContractTests(unittest.TestCase):
         disclose = self.section("Always Disclose")
         self.assertRegex(disclose, r"Execution path: <[^>]+> \(adversarial-review, Updated: <date>\)")
         self.assertRegex(disclose, r"Premortem: <one sentence")
-        self.assertIn("Target: <", disclose)
+        block = re.search(r"```text\n(.*?)```", disclose, re.S).group(1)
+        self.assertNotIn("Target:", block, "Target is written once, before mode selection")
+        self.assertIn("after the reviewers return", disclose)
 
     def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))

@@ -316,11 +316,9 @@ LOC is not a proxy for risk. A tiny auth, permissions, data deletion, billing, o
 
 ## Always Disclose
 
-After the first response line and before the findings, write these lines. Keep each line to one sentence.
+Before any launch, write the `Target:` line (see Identify the Target) and the `Mode:` line once. Then, after the reviewers return and before the findings, write these lines. Keep each line to one sentence.
 
 ```text
-Target: <exact target line>
-Mode: <SPAR | Rubber Duck>
 Execution path: <path> (adversarial-review, Updated: <date>)
 Reviewers: <launched count>; <agent type>; <model and effort for each, or model not changed / model diversity not confirmed>; three independent contexts <achieved | not achieved>
 Consensus ranking: <performed | not performed, with reason>

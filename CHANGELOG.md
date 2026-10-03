@@ -155,7 +155,8 @@ All notable changes to the skills in this repo.
   exposes a higher setting. Capability selection and Rubber Duck dispatch reuse
   the eligible roster and its count; missing preferred providers reduce the
   actual reviewer count rather than creating a conflicting three-reviewer
-  requirement. Unchanged models no longer imply that no subagents launched
+  requirement (now refined: rule 9 first fills one missing slot with another
+  frontier model from an exposed preferred provider). Unchanged models no longer imply that no subagents launched
   (review of #8).
 - **`project-room`** — install now copies the whole `project-room/` folder. The
   split made the operation files load-bearing, but the install text still said
