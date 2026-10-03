@@ -52,10 +52,34 @@ def read_events(path):
                 continue
 
 
+def load_key(event):
+    """Dedup key for a load event: tool call ID, or event ID for a slash-command load."""
+    data = event.get("data", {})
+    kind = event.get("type")
+    if kind == "tool.execution_start" and data.get("toolName") in LOADERS:
+        args = data.get("arguments") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except ValueError:
+                args = {}
+        if is_skill(args.get("skill") or args.get("name")):
+            return data.get("toolCallId")
+    if kind in ("skill.invoked", "skill.invoked_ref") and is_skill(data.get("name")) \
+            and data.get("trigger") == "user-invoked":
+        return event.get("id")
+    return None
+
+
 def scan(state_dir, excluded):
     """Return deduplicated load records and per-session events for sessions with loads."""
     loads = {}
     sessions = {}
+    suppressed = set()
+    for sid in excluded:
+        path = Path(state_dir) / sid / "events.jsonl"
+        if path.exists():
+            suppressed.update(k for k in map(load_key, read_events(path)) if k)
     for path in sorted(Path(state_dir).glob("*/events.jsonl")):
         sid = path.parent.name
         if sid in excluded or SKILL_NAME.encode() not in path.read_bytes():
@@ -71,28 +95,16 @@ def scan(state_dir, excluded):
             if e.get("type") in ("skill.invoked", "skill.invoked_ref"):
                 children[e.get("parentId")].append(e)
         for i, e in enumerate(events):
-            data = e.get("data", {})
-            kind = e.get("type")
-            record = None
-            if kind == "tool.execution_start" and data.get("toolName") in LOADERS:
-                args = data.get("arguments") or {}
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except ValueError:
-                        args = {}
-                if not is_skill(args.get("skill") or args.get("name")):
-                    continue
-                call = data.get("toolCallId")
-                finish = done.get(call)
-                skill_events = children.get(finish["id"], []) if finish else []
-                record = {"key": call, "ok": bool(finish and finish["data"].get("success")),
-                          "skill_event": skill_events[0] if skill_events else None}
-            elif kind in ("skill.invoked", "skill.invoked_ref") and is_skill(data.get("name")) \
-                    and data.get("trigger") == "user-invoked":
-                record = {"key": e["id"], "ok": True, "skill_event": e, "slash": True}
-            if record is None or record["key"] in loads:
+            key = load_key(e)
+            if not key or key in loads or key in suppressed:
                 continue
+            if e.get("type") == "tool.execution_start":
+                finish = done.get(key)
+                skill_events = children.get(finish["id"], []) if finish else []
+                record = {"key": key, "ok": bool(finish and finish["data"].get("success")),
+                          "skill_event": skill_events[0] if skill_events else None}
+            else:
+                record = {"key": key, "ok": True, "skill_event": e, "slash": True}
             record.update(session=sid, index=i, timestamp=e.get("timestamp", ""),
                           agent=e.get("agentId"))
             loads[record["key"]] = record

@@ -184,6 +184,17 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["status"], "pending")
         self.assertEqual(result["metrics"]["loads_success"], 0)
 
+    def test_excluded_load_copied_into_a_fork_stays_excluded(self):
+        for sid, calls in (("verify", ["call-1"]), ("fork", ["call-1", "call-2"])):
+            s = Session(self.root, sid)
+            for call in calls:
+                s.user()
+                s.agent_load(call)
+                s.say(DISCLOSED)
+            s.write()
+        m = self.run_audit(baseline(exclude_sessions=["verify"]))["metrics"]
+        self.assertEqual(m["loads_success"], 1)
+
     def test_status_is_pending_below_threshold_load_count(self):
         s = Session(self.root, "a")
         s.user()
