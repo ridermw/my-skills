@@ -5,7 +5,25 @@
       "id": "adversarial-preferred-provider-roster",
       "skills": ["adversarial-review/SKILL.md"],
       "input": "Run Rubber Duck on a substantive multi-file change. Three independent contexts and model overrides are available. The runtime exposes frontier OpenAI, Anthropic, and Google models supporting xhigh, but no xAI. State the execution path, provider roster, reviewer count, and planned dispatches. Repeat with the full preferred trio available, then with model/provider metadata, model overrides, and effort controls unavailable.",
-      "expected": "Select only OpenAI and Anthropic in the first case, dispatch two multi-model reviewers at xhigh, and disclose the reduced count; do not fill the third slot with Google or a duplicate. With the preferred trio available, dispatch three. With model control unavailable, dispatch the available independent contexts up to three as parallel-subagents and disclose unconfirmed model diversity and unsupported effort control without denying successful agent launches. Capability selection, dispatch, and execution disclosure must retain the selected and actually launched counts."
+      "expected": "Select only OpenAI and Anthropic in the first case. Dispatch two multi-model reviewers at xhigh, plus a third reviewer on a different frontier OpenAI or Anthropic model, disclosed as three contexts, two providers. Never fill the third slot with Google, a small tier, or the same model again. If no such model exists, dispatch two and disclose the reduced count. Pass an explicit model for each reviewer and compare it with the started model. If every started model is the same default, recalculate the path to parallel-subagents and disclose the substitution. With the preferred trio available, dispatch three. With model control unavailable, dispatch the available independent contexts up to three as parallel-subagents and disclose unconfirmed model diversity and unsupported effort control without denying successful agent launches. Capability selection, dispatch, and execution disclosure must retain the selected and actually launched counts."
+    },
+    {
+      "id": "adversarial-reviewer-guard",
+      "skills": ["adversarial-review/SKILL.md"],
+      "input": "You are a subagent. Your prompt starts with 'Reviewer guard: You are a reviewer launched by adversarial-review.' and asks you to critique a diff at commit abc123. The adversarial-review skill description matches the request. State whether you load the skill, launch agents, and what you return.",
+      "expected": "Do not load adversarial-review and do not launch agents or tasks. Review only the stated target and return findings in the Reviewer Output Schema."
+    },
+    {
+      "id": "adversarial-slash-first-line",
+      "skills": ["adversarial-review/SKILL.md"],
+      "input": "The user typed '/adversarial-review PLAN.md'. The conversation already contains <skill-context name=\"adversarial-review\"> with this skill text. PLAN.md exists at HEAD 1a2b3c4. State your first tool call, your first visible line, and the order of the next lines.",
+      "expected": "Do not call the skill tool again. The first visible line is 'Adversarial review | Updated: <date>' with the date from the loaded text, before mode, target, or reviewer launches. Then the Target line names PLAN.md and commit 1a2b3c4, before mode selection. Reviewers launch as rubber-duck with the reviewer guard first. The disclosure has Execution path with the Updated date and one Premortem sentence."
+    },
+    {
+      "id": "adversarial-ambiguous-target",
+      "skills": ["adversarial-review/SKILL.md"],
+      "input": "The user says 'adversarial review the PR' while two pull requests are open in the conversation, 17101728 and 17102019. State what you do before launching reviewers.",
+      "expected": "Write the first response line, then ask which pull request is the target. Do not launch reviewers until one exact URL and head commit is identified."
     },
     {
       "id": "ado-stale-success",

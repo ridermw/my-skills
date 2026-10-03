@@ -5,11 +5,48 @@ description: 'Pressure-tests an idea, plan, or change by running separated adver
 
 # Adversarial Review
 
+Updated: October 3, 2026
+
+## First Response Line
+
+Your first visible line after this skill loads is:
+
+```text
+Adversarial review | Updated: <date>
+```
+
+Replace `<date>` with the `Updated:` date at the top of this loaded text. Write this line before the mode, the target, any reviewer launch, or any analysis.
+
+If the conversation already contains `<skill-context name="adversarial-review">`, for example after `/adversarial-review`, the skill is loaded. Do not call the skill tool for it again unless the runtime requires a loader call. Write the first response line from that loaded text.
+
+The runtime can show its own invocation card before this line. This skill cannot change that card.
+
+## Reviewer Guard
+
+Every reviewer prompt starts with this exact line:
+
+```text
+Reviewer guard: You are a reviewer launched by adversarial-review. Do not load the adversarial-review skill. Do not launch agents or tasks. Review only the target below and return findings in the requested schema.
+```
+
+If your own prompt starts with `Reviewer guard:`, you are a reviewer. Do not choose a mode, launch agents, or load this skill. Review the target with the Premortem Pass, Review Constitution, Severity and Confidence Calibration, and Evidence Standards. Return the output your prompt requests: the Reviewer Output Schema for Rubber Duck, or the strongest objection, strongest support, hidden assumption, and failure mode for a SPAR role.
+
 ## Overview
 
 Stress-test thinking before committing. Use separated perspectives first, then synthesize; do not collapse into a generic pros/cons list.
 
 For implementation plans, code changes, tests, debugging hypotheses, or critique requests, prefer independent reviewer contexts and consensus-ranked findings. Consensus is useful only when independence is real.
+
+## Identify the Target
+
+Before you choose a mode, write one line: `Target: <exact target>`.
+
+- Repository file, plan, or change: repository-relative path or diff range at the commit SHA, or `uncommitted changes on <branch> at <HEAD SHA>`.
+- Pull request: full URL plus the head commit SHA.
+- Comment, thread, or web document: full URL.
+- Pasted text that is not in a file: its first words in quotes.
+
+If you cannot identify the exact target, or it differs from what the user named, ask before you launch reviewers. Give every reviewer the same target line.
 
 ## Choose the Mode
 
@@ -30,7 +67,7 @@ excluded providers do not count.
 
 | Capability | Execution path |
 | --- | --- |
-| At least two selected reviewers, all on distinct eligible preferred providers with confirmed model overrides | `multi-model-subagents` |
+| At least two selected reviewers on distinct eligible preferred providers with confirmed model overrides, plus an optional rule 9 reviewer | `multi-model-subagents` |
 | At least two selected independent contexts but distinct model control is unavailable or unconfirmed | `parallel-subagents` |
 | One selected critique/generic subagent | `single-subagent` |
 | No eligible subagent can be selected | `single-agent` |
@@ -75,8 +112,8 @@ Selection rules:
    from the selected count.
 2. **Use the preferred provider trio.** Assign one reviewer each from OpenAI,
    Anthropic, and xAI. Independence comes from different providers, not from
-   three variants of one family. Do not fill a missing slot with Google or
-   Gemini; reduce the reviewer count and disclose the downgrade.
+   three variants of one family. If a preferred provider is not exposed, fill
+   that one slot under rule 9; never use Google or Gemini.
 3. **Take each provider's frontier general-reasoning tier** — the tier that
    provider positions for its hardest reasoning and agentic work — and the
    newest generation of that tier.
@@ -94,11 +131,26 @@ Selection rules:
    is that provider's frontier tier; otherwise keep general-reasoning models.
 7. **Never fabricate.** If a provider, model, or effort level is not actually
    exposed, do not invent it and do not substitute a small-tier model to fill a
-   slot. Run the reviewers you can, reduce the count, and disclose
+   slot. Fill a missing provider slot under rule 9 when it applies. Otherwise
+   run the reviewers you can, reduce the count, and disclose
    `model diversity not confirmed`.
 8. **Fewer than three providers is a downgrade to disclose, not a reason to
    lower the tier bar.** Two frontier reviewers beat three where one is a
    small-tier stand-in.
+9. **Fill a missing provider slot with a third context, not a third
+   provider.** If only two preferred providers are exposed, give the third
+   reviewer a different frontier model from one of those two providers. It must
+   pass rules 3 and 4, and it must differ from the model that provider already
+   uses. The third model is never Google or Gemini and never a small tier.
+   Disclose `three contexts, two providers`. If no such model exists, reduce
+   the count.
+10. **Pass an explicit `model` for every reviewer, then check it.** The runtime
+   can replace an omitted model with a configured default, which can put every
+   reviewer on one model. After launch, compare each requested model with the
+   model that actually started. If they differ, disclose the substitution,
+   count providers from the started models, and recalculate the execution path
+   from the started models. If the runtime does not accept a model override,
+   launch without `model` and disclose `model diversity not confirmed`.
 
 ## Degeneration-of-Thought Safeguard
 
@@ -147,7 +199,7 @@ Do not send identical persona instructions to all reviewers unless the user expl
 1. State: `Mode: SPAR`.
 2. Frame the core tension in one sentence.
 3. Pick 3-5 roles with genuinely conflicting incentives.
-4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel. Otherwise simulate roles sequentially and say so.
+4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the path is `single-subagent`, launch one role that way and simulate the other roles sequentially. Otherwise simulate all roles sequentially. Say which roles were simulated.
 5. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
 6. Synthesize only after role perspectives.
 7. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
@@ -158,14 +210,15 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 
 1. State: `Mode: Rubber Duck`.
 2. Choose the execution path from Capability Check.
-3. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
-4. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
-5. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
-6. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
-7. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
-8. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
-9. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
-10. Separate accepted findings from rejected or unverified concerns.
+3. Launch every reviewer with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the runtime has no `rubber-duck` agent, use a general critique subagent and disclose `rubber-duck unavailable`.
+4. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
+5. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
+6. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
+7. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
+8. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
+9. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
+10. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
+11. Separate accepted findings from rejected or unverified concerns.
 
 Use sections: Critique target, Execution disclosure, Consensus-ranked findings, Single-reviewer findings worth considering, Recommended changes, Rejected or unverified concerns, Next action.
 
@@ -263,14 +316,14 @@ LOC is not a proxy for risk. A tiny auth, permissions, data deletion, billing, o
 
 ## Always Disclose
 
-Before the substantive answer, state:
+Before any launch, write the `Target:` line (see Identify the Target) and the `Mode:` line once. Then, after the reviewers return and before the findings, write these lines. Keep each line to one sentence.
 
-- selected mode
-- execution path
-- subagents actually launched, including agent/tool names when available
-- model and reasoning-effort requested for each subagent, or `model not changed` / `model diversity not confirmed`
-- whether three independent reviewer contexts were achieved
-- whether consensus ranking was performed
+```text
+Execution path: <path> (adversarial-review, Updated: <date>)
+Reviewers: <launched count>; <agent type>; <model and effort for each, or model not changed / model diversity not confirmed>; three independent contexts <achieved | not achieved>
+Consensus ranking: <performed | not performed, with reason>
+Premortem: <one sentence that names the most damaging credible failure>
+```
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 
@@ -281,7 +334,7 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 - Skill not loading: if the assistant does not mention `adversarial-review` or choose SPAR/Rubber Duck mode, assume the file was not loaded.
 - No model override: run three independent subagents if possible and disclose `model diversity not confirmed`; never substitute a small-tier model to fill a slot.
 - No three-subagent support: run the available critique subagent count and disclose the downgrade.
-- No `rubber-duck` agent: use generic critique subagents.
+- No `rubber-duck` agent: use generic critique subagents and disclose `rubber-duck unavailable`.
 - No subagents: simulate separated perspectives sequentially and disclose that limitation.
 
 ## Common Mistakes
@@ -296,7 +349,7 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 | Counting yourself as a reviewer | Consensus counts only independent reviewer contexts |
 | Claiming model diversity without model control | Say `model diversity not confirmed` |
 | Naming a specific model version | Select by provider tier and generation from what the runtime exposes now |
-| Filling a reviewer slot with a small/fast model | Reduce the reviewer count instead and disclose it |
+| Filling a reviewer slot with a small/fast model | Use rule 9 with a frontier model, or reduce the reviewer count and disclose it |
 | Dropping single-reviewer critical findings | Keep serious single-reviewer findings separately |
 | Letting reviewers influence each other | Give each reviewer the same target but not other reviewers' findings during first pass |
 | Treating consensus as proof | Consensus is a prioritization signal, not a guarantee |
@@ -326,10 +379,11 @@ For the cache example, likely high-priority findings include auth leakage from s
 Disclosure example:
 
 ```text
+Adversarial review | Updated: October 3, 2026
+Target: plan text "cache all GET responses in memory for 10 minutes"
 Mode: Rubber Duck
-Execution path: multi-model-subagents
-Subagents launched: three critique agents
-Models: provider-family diversity requested; exact model versions not hard-coded
-Three independent reviewer contexts: achieved
+Execution path: multi-model-subagents (adversarial-review, Updated: October 3, 2026)
+Reviewers: 3; rubber-duck; one frontier model per preferred provider at xhigh; three independent contexts achieved
 Consensus ranking: performed
+Premortem: a shared cache key serves one user's authorized response to another user.
 ```

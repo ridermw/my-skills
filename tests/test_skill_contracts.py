@@ -456,5 +456,94 @@ class SkillMetadataTests(unittest.TestCase):
                     self.assert_allowed_tools_scalar(fields["allowed-tools"])
 
 
+class AdversarialReviewContractTests(unittest.TestCase):
+    """Structural slots the orchestrator must fill; behavior is dry-run in skill_scenarios.json."""
+
+    @classmethod
+    def setUpClass(cls):
+        text = (ROOT / "skills" / "adversarial-review" / "SKILL.md").read_text()
+        cls.body = text.split("---", 2)[2].lstrip()
+        cls.sections = {}
+        for chunk in cls.body.split("\n## ")[1:]:
+            title, _, rest = chunk.partition("\n")
+            cls.sections[title.strip()] = rest
+        cls.order = list(cls.sections)
+
+    def section(self, title):
+        self.assertIn(title, self.sections, f"missing section: {title}")
+        return self.sections[title]
+
+    def test_updated_date_is_the_first_line_after_the_title(self):
+        lines = [line for line in self.body.splitlines() if line.strip()]
+        self.assertEqual(lines[0], "# Adversarial Review")
+        self.assertRegex(lines[1], r"^Updated: (January|February|March|April|May|June|July|"
+                                   r"August|September|October|November|December) \d{1,2}, \d{4}$")
+
+    def test_freshness_banner_is_the_first_response_line_before_mode_or_target(self):
+        first = self.section("First Response Line")
+        self.assertEqual(self.order[0], "First Response Line")
+        self.assertIn("Adversarial review | Updated: <date>", first)
+        self.assertIn("<skill-context name=\"adversarial-review\">", first)
+        self.assertRegex(first, r"(?i)invocation card")
+
+    def test_target_identification_precedes_mode_selection(self):
+        self.assertLess(self.order.index("Identify the Target"), self.order.index("Choose the Mode"))
+        target = self.section("Identify the Target")
+        self.assertRegex(target, r"Repository file, plan, or change: [^\n]*commit SHA")
+        self.assertRegex(target, r"Pull request: [^\n]*URL[^\n]*head commit SHA")
+        self.assertRegex(target, r"Pasted text that is not in a file: [^\n]*quotes")
+        self.assertIn("ask before you launch reviewers", target)
+
+    def test_reviewer_guard_is_defined_and_required_in_both_modes(self):
+        guard = self.section("Reviewer Guard")
+        self.assertIn("```text\nReviewer guard:", guard)
+        self.assertRegex(guard, r"Do not load the adversarial-review skill\.")
+        self.assertRegex(guard, r"Do not launch agents")
+        self.assertNotIn("Do not follow the rest of this skill", guard)
+        self.assertIn("strongest objection", guard, "SPAR reviewers return role fields")
+        for kept in ("Premortem Pass", "Review Constitution", "Reviewer Output Schema",
+                     "Severity and Confidence Calibration", "Evidence Standards"):
+            self.assertIn(kept, guard)
+        for mode in ("SPAR Mode", "Rubber Duck Mode"):
+            self.assertIn("reviewer guard", self.section(mode).lower())
+
+    def test_spar_handles_the_single_subagent_path(self):
+        self.assertIn("`single-subagent`", self.section("SPAR Mode"))
+
+    def test_reviewers_use_rubber_duck_agent_type_with_disclosed_fallback(self):
+        dispatch = self.section("Rubber Duck Mode") + self.section("SPAR Mode")
+        self.assertIn("agent_type: rubber-duck", dispatch)
+        self.assertIn("rubber-duck unavailable", self.body)
+
+    def test_disclosure_names_path_with_updated_date_and_one_premortem_sentence(self):
+        disclose = self.section("Always Disclose")
+        self.assertRegex(disclose, r"Execution path: <[^>]+> \(adversarial-review, Updated: <date>\)")
+        self.assertRegex(disclose, r"Premortem: <one sentence")
+        block = re.search(r"```text\n(.*?)```", disclose, re.S).group(1)
+        self.assertNotIn("Target:", block, "Target is written once, before mode selection")
+        self.assertIn("after the reviewers return", disclose)
+
+    def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
+        models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
+        self.assertIn("Pass an explicit `model` for every reviewer", models)
+        self.assertIn("model that actually started", models)
+        self.assertIn("If the runtime does not accept a model override", models)
+        self.assertIn("recalculate the execution path from the started models", models)
+
+    def test_third_context_fallback_is_disclosed_as_two_providers(self):
+        models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
+        self.assertIn("three contexts, two providers", models)
+        self.assertIn("never Google or Gemini", models)
+        for rule in (r"2\. \*\*Use the preferred provider trio\.\*\*", r"7\. \*\*Never fabricate\.\*\*"):
+            text = re.search(rule + r"(.*?)(?= \d+\. \*\*)", models).group(1)
+            self.assertIn("rule 9", text, f"rule must defer to rule 9: {rule}")
+
+    def test_current_provider_trio_is_preserved(self):
+        models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
+        self.assertIn("OpenAI, Anthropic, and xAI", models)
+        self.assertIn("Google and Gemini models are not eligible", models)
+        self.assertIn("`xhigh` for every reviewer", models)
+
+
 if __name__ == "__main__":
     unittest.main()
