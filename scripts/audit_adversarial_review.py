@@ -167,9 +167,9 @@ def audit(state_dir, baseline, skill_text):
     disclosed = fresh = 0
     for (sid, turn), records in turns.items():
         first = min(records, key=lambda r: r["index"])
-        date = first["updated"] or expected_updated
+        date = first["updated"]
         messages = turn_messages(sessions[sid], turn, first["index"])
-        if not messages:
+        if not messages or not date:
             continue
         paths = PATH_LINE.findall(messages[-1])
         if any(f"Updated: {date}" in p for p in paths) and PREMORTEM_LINE.search(messages[-1]):
@@ -207,11 +207,11 @@ def audit(state_dir, baseline, skill_text):
         return result
     t = baseline["thresholds"]
     checks = {
-        "subagent_share": metrics["subagent_share"] < t["max_subagent_share"],
-        "disclosure_rate": (metrics["disclosure_rate"] or 0) > t["min_disclosure_rate"],
-        "freshness_rate": (metrics["freshness_rate"] or 0) > t["min_freshness_rate"],
-        "duplicate_turns": metrics["duplicate_turns"] <= t["max_duplicate_turns"],
-        "expected_hash_share": metrics["expected_hash_share"] >= t["min_expected_hash_share"],
+        "subagent_share": metrics["subagent_share"] < t["subagent_share_below"],
+        "disclosure_rate": (metrics["disclosure_rate"] or 0) > t["disclosure_rate_above"],
+        "freshness_rate": (metrics["freshness_rate"] or 0) > t["freshness_rate_above"],
+        "duplicate_turns": metrics["duplicate_turns"] <= t["duplicate_turns_at_most"],
+        "expected_hash_share": metrics["expected_hash_share"] >= t["expected_hash_share_at_least"],
     }
     result.update(checks=checks, status="pass" if all(checks.values()) else "fail",
                   reason=f"{len(ok)} successful loads since {start}")

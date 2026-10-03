@@ -502,6 +502,9 @@ class AdversarialReviewContractTests(unittest.TestCase):
         for mode in ("SPAR Mode", "Rubber Duck Mode"):
             self.assertIn("reviewer guard", self.section(mode).lower())
 
+    def test_spar_handles_the_single_subagent_path(self):
+        self.assertIn("`single-subagent`", self.section("SPAR Mode"))
+
     def test_reviewers_use_rubber_duck_agent_type_with_disclosed_fallback(self):
         dispatch = self.section("Rubber Duck Mode") + self.section("SPAR Mode")
         self.assertIn("agent_type: rubber-duck", dispatch)

@@ -4,11 +4,11 @@
   "window_start": "first-expected-load",
   "min_loads": 50,
   "thresholds": {
-    "max_subagent_share": 0.10,
-    "min_disclosure_rate": 0.90,
-    "min_freshness_rate": 0.90,
-    "max_duplicate_turns": 0,
-    "min_expected_hash_share": 1.0
+    "subagent_share_below": 0.10,
+    "disclosure_rate_above": 0.90,
+    "freshness_rate_above": 0.90,
+    "duplicate_turns_at_most": 0,
+    "expected_hash_share_at_least": 1.0
   },
   "exclude_sessions": [
     "2a9df462-994f-44b9-a01f-a419855f79c3",
@@ -22,7 +22,9 @@
     "duplicate_turn": "A main-thread user turn with more than one successful load.",
     "disclosure": "The last main assistant message in the turn has an 'Execution path:' line and a 'Premortem:' line.",
     "freshness": "The first main assistant message after the load starts with 'Adversarial review | Updated: '.",
-    "exclusions": "Sessions that built, verified, or reviewed this change, so that test loads do not count."
+    "exclusions": "Sessions that built, verified, or reviewed this change, so that test loads do not count.",
+    "thresholds": "Comparisons are strict where the key says below or above, as Matthew set them: fewer than 10% subagent loads and more than 90% disclosure and freshness.",
+    "unknown_date": "A load whose text has no known Updated date gets no freshness or disclosure credit."
   },
   "prior": {
     "measured": "2026-10-03, local logs only, same rules, all history",

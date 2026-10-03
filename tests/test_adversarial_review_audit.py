@@ -82,9 +82,9 @@ DISCLOSED = "Adversarial review | Updated: October 3, 2026\nExecution path: para
 
 def baseline(**overrides):
     data = {"schema": 1, "window_start": "first-expected-load", "min_loads": 2,
-            "thresholds": {"max_subagent_share": 0.10, "min_disclosure_rate": 0.90,
-                           "min_freshness_rate": 0.90,
-                           "max_duplicate_turns": 0, "min_expected_hash_share": 1.0},
+            "thresholds": {"subagent_share_below": 0.10, "disclosure_rate_above": 0.90,
+                           "freshness_rate_above": 0.90,
+                           "duplicate_turns_at_most": 0, "expected_hash_share_at_least": 1.0},
             "exclude_sessions": []}
     data.update(overrides)
     return data
@@ -254,6 +254,30 @@ class AuditTests(unittest.TestCase):
         m = self.run_audit()["metrics"]
         self.assertEqual(m["updated_labels"], {"October 3, 2026": 1})
         self.assertEqual(m["expected_hash_share"], 1.0)
+
+    def test_load_without_a_known_updated_date_gets_no_credit(self):
+        s = Session(self.root, "a")
+        s.user()
+        s.agent_load("new")
+        s.say(DISCLOSED)
+        s.user()
+        s.agent_load("stale", body=OLD_BODY)
+        s.say(DISCLOSED)
+        s.write()
+        m = self.run_audit()["metrics"]
+        self.assertEqual((m["fresh_first_turns"], m["disclosed_turns"], m["main_turns"]), (1, 1, 2))
+
+    def test_thresholds_are_strict_at_the_user_limits(self):
+        s = Session(self.root, "a")
+        for n in range(9):
+            s.user()
+            s.agent_load(f"call-{n}")
+            s.say(DISCLOSED)
+        s.agent_load("reviewer-load", agent="reviewer")
+        s.write()
+        result = self.run_audit(baseline(min_loads=10))
+        self.assertEqual(result["metrics"]["subagent_share"], 0.1)
+        self.assertFalse(result["checks"]["subagent_share"])
 
     def test_cli_exit_codes_and_read_only_output(self):
         s = Session(self.root, "a")

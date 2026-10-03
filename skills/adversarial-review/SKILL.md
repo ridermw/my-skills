@@ -184,7 +184,7 @@ Do not send identical persona instructions to all reviewers unless the user expl
 1. State: `Mode: SPAR`.
 2. Frame the core tension in one sentence.
 3. Pick 3-5 roles with genuinely conflicting incentives.
-4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. Otherwise simulate roles sequentially and say so.
+4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the path is `single-subagent`, launch one role that way and simulate the other roles sequentially. Otherwise simulate all roles sequentially. Say which roles were simulated.
 5. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
 6. Synthesize only after role perspectives.
 7. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
