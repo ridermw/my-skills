@@ -138,7 +138,8 @@ All notable changes to the skills in this repo.
   launching agents. The disclosure is a fixed block with the execution path, the
   Updated date, and one premortem sentence. Model selection is unchanged. An
   audit of 221 real loads found 61% of local loads inside subagents, duplicate
-  loads in 5 turns, and no execution path or premortem lines in final answers.
+  loads in 5 turns, an execution path in 20 of 64 main loads, and a premortem
+  in 6 of 64.
 - **Repository tooling** — `scripts/audit_adversarial_review.py` and
   `scripts/adversarial-review-audit-baseline.json` add a read-only follow-up
   audit that measures the next 50 real loads of the current skill text. The

@@ -125,7 +125,9 @@ python3 scripts/audit_adversarial_review.py          # summary
 python3 scripts/audit_adversarial_review.py --json   # full result
 ```
 
-Exit code 2 means pending: fewer than 50 successful loads of the current text.
+Exit code 2 means pending: fewer than 50 successful loads since the current
+text first loaded. Stale or unknown loads in that window count toward the 50
+and fail the content check.
 Exit code 0 means that all thresholds pass. Exit code 1 means that at least one
 threshold fails. Do not make test loads to reach the count. Add the session IDs
 of test or verification sessions to `exclude_sessions`.
