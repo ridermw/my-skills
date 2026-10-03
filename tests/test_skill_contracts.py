@@ -527,6 +527,9 @@ class AdversarialReviewContractTests(unittest.TestCase):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
         self.assertIn("three contexts, two providers", models)
         self.assertIn("never Google or Gemini", models)
+        for rule in (r"2\. \*\*Use the preferred provider trio\.\*\*", r"7\. \*\*Never fabricate\.\*\*"):
+            text = re.search(rule + r"(.*?)(?= \d+\. \*\*)", models).group(1)
+            self.assertIn("rule 9", text, f"rule must defer to rule 9: {rule}")
 
     def test_current_provider_trio_is_preserved(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))

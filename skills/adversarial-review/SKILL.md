@@ -112,8 +112,8 @@ Selection rules:
    from the selected count.
 2. **Use the preferred provider trio.** Assign one reviewer each from OpenAI,
    Anthropic, and xAI. Independence comes from different providers, not from
-   three variants of one family. Do not fill a missing slot with Google or
-   Gemini. Use rule 9 for a missing slot.
+   three variants of one family. If a preferred provider is not exposed, fill
+   that one slot under rule 9; never use Google or Gemini.
 3. **Take each provider's frontier general-reasoning tier** — the tier that
    provider positions for its hardest reasoning and agentic work — and the
    newest generation of that tier.
@@ -131,7 +131,8 @@ Selection rules:
    is that provider's frontier tier; otherwise keep general-reasoning models.
 7. **Never fabricate.** If a provider, model, or effort level is not actually
    exposed, do not invent it and do not substitute a small-tier model to fill a
-   slot. Run the reviewers you can, reduce the count, and disclose
+   slot. Fill a missing provider slot under rule 9 when it applies. Otherwise
+   run the reviewers you can, reduce the count, and disclose
    `model diversity not confirmed`.
 8. **Fewer than three providers is a downgrade to disclose, not a reason to
    lower the tier bar.** Two frontier reviewers beat three where one is a
