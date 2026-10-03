@@ -128,6 +128,21 @@ All notable changes to the skills in this repo.
     objections the verbatim transcript records).
 
 ### Changed
+- **`adversarial-review`** — the skill text now shows `Updated: October 3, 2026`
+  under its title. The first visible answer line is
+  `Adversarial review | Updated: <date>`, also when a slash command already
+  loaded the skill. A loaded skill is not loaded again. Each review states one
+  exact `Target:` line before mode selection. Reviewers launch as
+  `agent_type: rubber-duck`, with a disclosed fallback. Each reviewer prompt
+  starts with a reviewer guard that forbids loading the skill again or
+  launching agents. The disclosure is a fixed block with the execution path, the
+  Updated date, and one premortem sentence. Model selection is unchanged. An
+  audit of 221 real loads found 61% of local loads inside subagents, duplicate
+  loads in 5 turns, and no execution path or premortem lines in final answers.
+- **Repository tooling** — `scripts/audit_adversarial_review.py` and
+  `scripts/adversarial-review-audit-baseline.json` add a read-only follow-up
+  audit that measures the next 50 real loads of the current skill text. The
+  README now documents a symbolic link install and a `diff` check.
 - **`adversarial-review`** — the preferred three-provider reviewer lineup is now
   OpenAI, Anthropic and xAI. The xAI slot selects the newest exposed frontier
   general-reasoning Grok at request time; it does not pin today's version.

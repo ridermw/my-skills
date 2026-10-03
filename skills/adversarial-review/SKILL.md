@@ -5,11 +5,48 @@ description: 'Pressure-tests an idea, plan, or change by running separated adver
 
 # Adversarial Review
 
+Updated: October 3, 2026
+
+## First Response Line
+
+Your first visible line after this skill loads is:
+
+```text
+Adversarial review | Updated: <date>
+```
+
+Replace `<date>` with the `Updated:` date at the top of this loaded text. Write this line before the mode, the target, any reviewer launch, or any analysis.
+
+If the conversation already contains `<skill-context name="adversarial-review">`, for example after `/adversarial-review`, the skill is loaded. Do not call the skill tool for it again unless the runtime requires a loader call. Write the first response line from that loaded text.
+
+The runtime can show its own invocation card before this line. This skill cannot change that card.
+
+## Reviewer Guard
+
+Every reviewer prompt starts with this exact line:
+
+```text
+Reviewer guard: You are a reviewer launched by adversarial-review. Do not load the adversarial-review skill. Do not launch agents or tasks. Review only the target below and return findings in the requested schema.
+```
+
+If your own prompt starts with `Reviewer guard:`, you are a reviewer. Do not follow the rest of this skill. Review the target and return the Reviewer Output Schema.
+
 ## Overview
 
 Stress-test thinking before committing. Use separated perspectives first, then synthesize; do not collapse into a generic pros/cons list.
 
 For implementation plans, code changes, tests, debugging hypotheses, or critique requests, prefer independent reviewer contexts and consensus-ranked findings. Consensus is useful only when independence is real.
+
+## Identify the Target
+
+Before you choose a mode, write one line: `Target: <exact target>`.
+
+- Repository file, plan, or change: repository-relative path or diff range at the commit SHA, or `uncommitted changes on <branch> at <HEAD SHA>`.
+- Pull request: full URL plus the head commit SHA.
+- Comment, thread, or web document: full URL.
+- Pasted text that is not in a file: its first words in quotes.
+
+If you cannot identify the exact target, or it differs from what the user named, ask before you launch reviewers. Give every reviewer the same target line.
 
 ## Choose the Mode
 
@@ -147,7 +184,7 @@ Do not send identical persona instructions to all reviewers unless the user expl
 1. State: `Mode: SPAR`.
 2. Frame the core tension in one sentence.
 3. Pick 3-5 roles with genuinely conflicting incentives.
-4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel. Otherwise simulate roles sequentially and say so.
+4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. Otherwise simulate roles sequentially and say so.
 5. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
 6. Synthesize only after role perspectives.
 7. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
@@ -158,14 +195,15 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 
 1. State: `Mode: Rubber Duck`.
 2. Choose the execution path from Capability Check.
-3. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
-4. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
-5. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
-6. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
-7. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
-8. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
-9. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
-10. Separate accepted findings from rejected or unverified concerns.
+3. Launch every reviewer with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the runtime has no `rubber-duck` agent, use a general critique subagent and disclose `rubber-duck unavailable`.
+4. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
+5. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
+6. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
+7. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
+8. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
+9. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
+10. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
+11. Separate accepted findings from rejected or unverified concerns.
 
 Use sections: Critique target, Execution disclosure, Consensus-ranked findings, Single-reviewer findings worth considering, Recommended changes, Rejected or unverified concerns, Next action.
 
@@ -263,14 +301,16 @@ LOC is not a proxy for risk. A tiny auth, permissions, data deletion, billing, o
 
 ## Always Disclose
 
-Before the substantive answer, state:
+After the first response line and before the findings, write these lines. Keep each line to one sentence.
 
-- selected mode
-- execution path
-- subagents actually launched, including agent/tool names when available
-- model and reasoning-effort requested for each subagent, or `model not changed` / `model diversity not confirmed`
-- whether three independent reviewer contexts were achieved
-- whether consensus ranking was performed
+```text
+Target: <exact target line>
+Mode: <SPAR | Rubber Duck>
+Execution path: <path> (adversarial-review, Updated: <date>)
+Reviewers: <launched count>; <agent type>; <model and effort for each, or model not changed / model diversity not confirmed>; three independent contexts <achieved | not achieved>
+Consensus ranking: <performed | not performed, with reason>
+Premortem: <one sentence that names the most damaging credible failure>
+```
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 
@@ -281,7 +321,7 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 - Skill not loading: if the assistant does not mention `adversarial-review` or choose SPAR/Rubber Duck mode, assume the file was not loaded.
 - No model override: run three independent subagents if possible and disclose `model diversity not confirmed`; never substitute a small-tier model to fill a slot.
 - No three-subagent support: run the available critique subagent count and disclose the downgrade.
-- No `rubber-duck` agent: use generic critique subagents.
+- No `rubber-duck` agent: use generic critique subagents and disclose `rubber-duck unavailable`.
 - No subagents: simulate separated perspectives sequentially and disclose that limitation.
 
 ## Common Mistakes
@@ -326,10 +366,11 @@ For the cache example, likely high-priority findings include auth leakage from s
 Disclosure example:
 
 ```text
+Adversarial review | Updated: October 3, 2026
+Target: plan text "cache all GET responses in memory for 10 minutes"
 Mode: Rubber Duck
-Execution path: multi-model-subagents
-Subagents launched: three critique agents
-Models: provider-family diversity requested; exact model versions not hard-coded
-Three independent reviewer contexts: achieved
+Execution path: multi-model-subagents (adversarial-review, Updated: October 3, 2026)
+Reviewers: 3; rubber-duck; one frontier model per preferred provider at xhigh; three independent contexts achieved
 Consensus ranking: performed
+Premortem: a shared cache key serves one user's authorized response to another user.
 ```

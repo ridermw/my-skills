@@ -89,6 +89,47 @@ cp -R skills/<skill-name> ~/.copilot/skills/<skill-name>   # re-copy after pull
 ```
 (Or symlink `~/.copilot/skills/<skill-name>` → this repo's folder to skip the copy.)
 
+A copied folder does not change when you pull. For `adversarial-review`, use a
+symbolic link to a persistent clone, not a temporary worktree. Keep the old copy
+as a backup:
+
+```bash
+mv ~/.copilot/skills/adversarial-review ~/.copilot/skills/adversarial-review.backup-$(date +%Y%m%d)
+ln -s "$PWD/skills/adversarial-review" ~/.copilot/skills/adversarial-review
+```
+
+### Check the installed version
+
+`adversarial-review` shows `Updated: <Month Day, Year>` under its title. Change
+that date in the same commit as any change to the skill text. Two changes on the
+same day have the same date, so compare the content too:
+
+```bash
+readlink ~/.copilot/skills/adversarial-review
+diff -u ~/.copilot/skills/adversarial-review/SKILL.md skills/adversarial-review/SKILL.md
+```
+
+No output from `diff` means that the installed text and the repository text are
+the same. Agents load the text that existed when the session started. Start a new
+session after you change the installed skill.
+
+### Follow-up audit
+
+`scripts/audit_adversarial_review.py` reads local Copilot CLI session logs and
+writes nothing. It compares real loads of the current skill text with the
+thresholds in `scripts/adversarial-review-audit-baseline.json`. The baseline
+records the rules and the metrics before the change.
+
+```bash
+python3 scripts/audit_adversarial_review.py          # summary
+python3 scripts/audit_adversarial_review.py --json   # full result
+```
+
+Exit code 2 means pending: fewer than 50 successful loads of the current text.
+Exit code 0 means that all thresholds pass. Exit code 1 means that at least one
+threshold fails. Do not make test loads to reach the count. Add the session IDs
+of test or verification sessions to `exclude_sessions`.
+
 ## Contributing
 
 Each skill must stay **self-contained** — a single `SKILL.md`, plus optional
