@@ -516,6 +516,18 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(disclose, r"Premortem: <one sentence")
         self.assertIn("Target: <", disclose)
 
+    def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
+        models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
+        self.assertIn("Pass an explicit `model` for every reviewer", models)
+        self.assertIn("model that actually started", models)
+        self.assertIn("If the runtime does not accept a model override", models)
+        self.assertIn("recalculate the execution path from the started models", models)
+
+    def test_third_context_fallback_is_disclosed_as_two_providers(self):
+        models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
+        self.assertIn("three contexts, two providers", models)
+        self.assertIn("never Google or Gemini", models)
+
     def test_current_provider_trio_is_preserved(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
         self.assertIn("OpenAI, Anthropic, and xAI", models)

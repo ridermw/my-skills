@@ -136,7 +136,10 @@ All notable changes to the skills in this repo.
   `agent_type: rubber-duck`, with a disclosed fallback. Each reviewer prompt
   starts with a reviewer guard that forbids loading the skill again or
   launching agents. The disclosure is a fixed block with the execution path, the
-  Updated date, and one premortem sentence. Model selection is unchanged. An
+  Updated date, and one premortem sentence. Every reviewer gets an explicit
+  model, and the started model is checked against it. When only two preferred
+  providers are exposed, a third reviewer uses a different frontier model from
+  one of them, disclosed as `three contexts, two providers`. An
   audit of 221 real loads found 61% of local loads inside subagents, duplicate
   loads in 5 turns, an execution path in 20 of 64 main loads, and a premortem
   in 6 of 64.

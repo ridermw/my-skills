@@ -67,7 +67,7 @@ excluded providers do not count.
 
 | Capability | Execution path |
 | --- | --- |
-| At least two selected reviewers, all on distinct eligible preferred providers with confirmed model overrides | `multi-model-subagents` |
+| At least two selected reviewers on distinct eligible preferred providers with confirmed model overrides, plus an optional rule 9 reviewer | `multi-model-subagents` |
 | At least two selected independent contexts but distinct model control is unavailable or unconfirmed | `parallel-subagents` |
 | One selected critique/generic subagent | `single-subagent` |
 | No eligible subagent can be selected | `single-agent` |
@@ -113,7 +113,7 @@ Selection rules:
 2. **Use the preferred provider trio.** Assign one reviewer each from OpenAI,
    Anthropic, and xAI. Independence comes from different providers, not from
    three variants of one family. Do not fill a missing slot with Google or
-   Gemini; reduce the reviewer count and disclose the downgrade.
+   Gemini. Use rule 9 for a missing slot.
 3. **Take each provider's frontier general-reasoning tier** — the tier that
    provider positions for its hardest reasoning and agentic work — and the
    newest generation of that tier.
@@ -136,6 +136,20 @@ Selection rules:
 8. **Fewer than three providers is a downgrade to disclose, not a reason to
    lower the tier bar.** Two frontier reviewers beat three where one is a
    small-tier stand-in.
+9. **Fill a missing provider slot with a third context, not a third
+   provider.** If only two preferred providers are exposed, give the third
+   reviewer a different frontier model from one of those two providers. It must
+   pass rules 3 and 4, and it must differ from the model that provider already
+   uses. The third model is never Google or Gemini and never a small tier.
+   Disclose `three contexts, two providers`. If no such model exists, reduce
+   the count.
+10. **Pass an explicit `model` for every reviewer, then check it.** The runtime
+   can replace an omitted model with a configured default, which can put every
+   reviewer on one model. After launch, compare each requested model with the
+   model that actually started. If they differ, disclose the substitution,
+   count providers from the started models, and recalculate the execution path
+   from the started models. If the runtime does not accept a model override,
+   launch without `model` and disclose `model diversity not confirmed`.
 
 ## Degeneration-of-Thought Safeguard
 
@@ -336,7 +350,7 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 | Counting yourself as a reviewer | Consensus counts only independent reviewer contexts |
 | Claiming model diversity without model control | Say `model diversity not confirmed` |
 | Naming a specific model version | Select by provider tier and generation from what the runtime exposes now |
-| Filling a reviewer slot with a small/fast model | Reduce the reviewer count instead and disclose it |
+| Filling a reviewer slot with a small/fast model | Use rule 9 with a frontier model, or reduce the reviewer count and disclose it |
 | Dropping single-reviewer critical findings | Keep serious single-reviewer findings separately |
 | Letting reviewers influence each other | Give each reviewer the same target but not other reviewers' findings during first pass |
 | Treating consensus as proof | Consensus is a prioritization signal, not a guarantee |
