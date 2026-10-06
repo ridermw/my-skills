@@ -594,19 +594,29 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_spar_handles_the_single_subagent_path(self):
         self.assertIn("`single-subagent`", self.section("SPAR Mode"))
 
-    def test_spar_covers_every_selected_role_without_exceeding_three_first_pass_reviewers(self):
+    def test_spar_retains_reused_roles_or_selects_fresh_roles_within_the_context_cap(self):
         spar = re.sub(r"\s+", " ", self.section("SPAR Mode"))
-        self.assertRegex(spar, r"(?i)pick 3-5 roles")
+        self.assertRegex(
+            spar,
+            r"(?i)`reused-review`.*retain.*prior review.*role set",
+        )
+        self.assertRegex(
+            spar,
+            r"(?i)(?:all other|non-reused).*paths.*pick 3-5 fresh roles",
+        )
         self.assertRegex(
             spar,
             r"(?i)one primary role per selected independent (?:reviewer )?context",
         )
         self.assertRegex(spar, r"(?i)at most three first-pass reviewer contexts")
-        self.assertRegex(spar, r"(?i)remaining roles.*sequentially.*main synthesizer")
+        self.assertRegex(
+            spar,
+            r"(?i)(?:remaining|extra) fresh roles.*sequentially.*main synthesizer",
+        )
         self.assertRegex(spar, r"(?i)disclose.*simulated roles")
         self.assertRegex(
             spar,
-            r"(?i)synthesize only after every (?:selected )?role has a perspective",
+            r"(?i)synthesize only after every selected or retained role has a perspective",
         )
 
     def test_reviewers_use_rubber_duck_agent_type_with_disclosed_fallback(self):
@@ -666,6 +676,27 @@ class AdversarialReviewContractTests(unittest.TestCase):
             r"(?i)`max`.*critical or high Rubber Duck finding"
             r".*material SPAR claim.*verdict or recommendation.*every disagreement",
         )
+        self.assertRegex(
+            cross,
+            r"(?i)`max`.*always run cross-examination",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)(?:if|when) (?:those|these) sets are empty"
+            r".*highest-impact remaining Rubber Duck finding"
+            r".*strongest decision-relevant SPAR claim",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`max`.*always run a groupthink check"
+            r".*shared assumption.*panel wrong",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`auto`.*groupthink check"
+            r".*agreement rests on an unverified shared assumption",
+        )
+        self.assertRegex(cross, r"(?i)synthesizer decides.*does not add votes")
         judge = re.sub(r"\s+", " ", self.section("Judge/Synthesizer Rules"))
         self.assertRegex(judge, r"(?i)actionable")
         self.assertRegex(judge, r"(?i)consensus.*signal")

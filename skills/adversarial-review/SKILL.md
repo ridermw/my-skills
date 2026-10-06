@@ -272,18 +272,21 @@ Do not send identical persona instructions to all reviewers unless the user expl
 
 1. State: `Mode: SPAR`.
 2. Frame the core tension in one sentence.
-3. Pick 3-5 roles with genuinely conflicting incentives.
-4. Assign one primary role per selected independent reviewer context, up to the
-   cap of at most three first-pass reviewer contexts, and dispatch those roles
-   in parallel with `agent_type: rubber-duck`. Start each prompt with the
-   reviewer guard, then the target line. Cover the remaining roles sequentially
-   in the main synthesizer without counting it as another reviewer. For
-   `single-subagent`, assign one primary role to that context and cover the
-   rest the same way; for `single-agent`, cover all selected roles sequentially.
-   For `reused-review`, report the accessible prior role perspectives and do not
-   create new role perspectives. Disclose simulated roles and reused roles.
+3. For `reused-review`, retain and report the accessible prior review's role
+   set. For all other paths, pick 3-5 fresh roles with genuinely conflicting
+   incentives.
+4. For fresh review, assign one primary role per selected independent reviewer
+   context, up to the cap of at most three first-pass reviewer contexts, and
+   dispatch those roles in parallel with `agent_type: rubber-duck`. Start each
+   prompt with the reviewer guard, then the target line. Cover extra fresh roles
+   sequentially in the main synthesizer without counting it as another
+   reviewer. For `single-subagent`, assign one primary role to that context and
+   cover the rest the same way; for `single-agent`, cover all selected roles
+   sequentially. For `reused-review`, use the accessible prior role perspectives
+   for the retained roles and do not create new role perspectives. Disclose
+   simulated roles and reused roles.
 5. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
-6. Synthesize only after every selected role has a perspective.
+6. Synthesize only after every selected or retained role has a perspective.
 7. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
 
 Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open question(s).
@@ -377,13 +380,14 @@ Recommended change:
 
 ## Cross-Examination Round
 
-After independent first-pass reviews, the synthesizer may show reviewers the other findings and ask:
+Use cross-examination after independent first-pass reviews to calibrate
+overstatement, test decision-relevant claims, expose material disagreement, and
+identify shared assumptions before synthesis. The synthesizer may show
+reviewers the other findings and ask:
 
 > What did they miss? Which of your original findings should change? Which disagreement is itself a risk?
 
-Do not count this second round as new independent consensus. It is for refinement, conflict discovery, and missed-assumption detection only.
-
-Cross-examination targets and outcomes depend on the review mode:
+Challenge fields and outcomes depend on the review mode:
 
 - **Rubber Duck:** Challenge each material finding on existence, scope,
   severity, and recommended action. Ask reviewers to `uphold`, `narrow`,
@@ -394,13 +398,20 @@ Cross-examination targets and outcomes depend on the review mode:
   unresolved assumption, and explain the evidence.
 
 Under `auto`, cross-examination is required for material disagreement or
-suspected overstatement in either mode. Under `max`, it is mandatory for every
-critical or high Rubber Duck finding, every material SPAR claim that could
-change the verdict or recommendation, and every disagreement.
+suspected overstatement in either mode. Under `auto`, run a groupthink check
+when agreement rests on an unverified shared assumption.
 
-The synthesizer decides; this round does not add votes. If `max` reviewers agree
-too neatly, always run a groupthink check. Under `auto`, run one when agreement
-rests on an unverified shared assumption.
+Under `max`, always run cross-examination. Challenge every critical or high
+Rubber Duck finding, every material SPAR claim that could change the verdict or
+recommendation, and every disagreement. If those sets are empty, challenge the
+highest-impact remaining Rubber Duck finding or strongest decision-relevant
+SPAR claim so the round cannot be skipped. Under `max`, always run a groupthink
+check that identifies a shared assumption that could make the panel wrong,
+regardless of how neat the agreement looks.
+
+The synthesizer decides; cross-examination does not add votes. Preserve
+unresolved disagreement or assumptions in the synthesis rather than forcing
+agreement.
 
 ## Reviewer Failure Handling
 
