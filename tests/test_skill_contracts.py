@@ -479,6 +479,13 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(lines[1], r"^Updated: (January|February|March|April|May|June|July|"
                                    r"August|September|October|November|December) \d{1,2}, \d{4}$")
 
+    def test_hardcoded_updated_dates_match_the_skill_header(self):
+        header_date = re.search(r"^Updated: (.+)$", self.body, re.M).group(1)
+        hardcoded = set(re.findall(r"Updated: ((?:January|February|March|April|May|June|"
+                                   r"July|August|September|October|November|December) "
+                                   r"\d{1,2}, \d{4})", self.body))
+        self.assertEqual(hardcoded, {header_date})
+
     def test_freshness_banner_is_the_first_response_line_before_mode_or_target(self):
         first = self.section("First Response Line")
         self.assertEqual(self.order[0], "First Response Line")
@@ -493,6 +500,38 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(target, r"Pull request: [^\n]*URL[^\n]*head commit SHA")
         self.assertRegex(target, r"Pasted text that is not in a file: [^\n]*quotes")
         self.assertIn("ask before you launch reviewers", target)
+
+    def test_review_intensity_is_one_public_control_with_auto_default(self):
+        intensity = self.section("Review Intensity")
+        self.assertLess(self.order.index("Identify the Target"),
+                        self.order.index("Review Intensity"))
+        self.assertLess(self.order.index("Review Intensity"),
+                        self.order.index("Choose the Mode"))
+        self.assertIn("`low | auto | max`", intensity)
+        self.assertRegex(intensity, r"(?i)`auto` is the default")
+        self.assertRegex(intensity, r"(?i)low[^\n]*at most one new reviewer")
+        self.assertRegex(intensity, r"(?i)max[^\n]*fresh three-reviewer")
+        self.assertNotRegex(intensity, r"`medium`|`high`")
+
+    def test_prior_review_reuse_precedes_capability_selection(self):
+        self.assertLess(self.order.index("Prior Review Check"),
+                        self.order.index("Capability Check"))
+        prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
+        self.assertRegex(prior, r"(?i)available session history")
+        self.assertRegex(prior, r"(?i)exact target")
+        self.assertRegex(prior, r"(?i)commit SHA|content hash")
+        self.assertRegex(prior, r"(?i)review only the delta")
+        self.assertRegex(prior, r"(?i)`max`[^\n]*bypass")
+        self.assertRegex(prior, r"(?i)mode-compatible")
+        self.assertRegex(prior, r"(?i)forces a different mode[^\n]*forced-mode work")
+
+    def test_mode_is_automatic_unless_user_explicitly_forces_it(self):
+        mode = self.section("Choose the Mode")
+        self.assertRegex(mode, r"(?i)desired output")
+        self.assertIn("force SPAR", mode)
+        self.assertIn("force Rubber Duck", mode)
+        self.assertRegex(mode, r"(?i)explicit.*override")
+        self.assertRegex(mode, r"(?i)review, critique, or audit")
 
     def test_reviewer_guard_is_defined_and_required_in_both_modes(self):
         guard = self.section("Reviewer Guard")
@@ -518,10 +557,23 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_disclosure_names_path_with_updated_date_and_one_premortem_sentence(self):
         disclose = self.section("Always Disclose")
         self.assertRegex(disclose, r"Execution path: <[^>]+> \(adversarial-review, Updated: <date>\)")
+        self.assertIn("Review intensity: <low | auto | max>", disclose)
+        self.assertIn("Prior review:", disclose)
         self.assertRegex(disclose, r"Premortem: <one sentence")
         block = re.search(r"```text\n(.*?)```", disclose, re.S).group(1)
         self.assertNotIn("Target:", block, "Target is written once, before mode selection")
-        self.assertIn("after the reviewers return", disclose)
+        self.assertIn("after the review completes", disclose)
+
+    def test_cross_examination_calibrates_overstatement_and_disagreement(self):
+        cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
+        for outcome in ("uphold", "narrow", "downgrade", "withdraw"):
+            self.assertIn(outcome, cross.lower())
+        self.assertRegex(cross, r"(?i)`auto`[^\n]*disagree")
+        self.assertRegex(cross, r"(?i)`max`[^\n]*mandatory")
+        self.assertRegex(cross, r"(?i)overstat")
+        judge = re.sub(r"\s+", " ", self.section("Judge/Synthesizer Rules"))
+        self.assertRegex(judge, r"(?i)actionable")
+        self.assertRegex(judge, r"(?i)consensus.*signal")
 
     def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))

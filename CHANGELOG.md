@@ -4,6 +4,16 @@ All notable changes to the skills in this repo.
 
 ## [Unreleased]
 
+### Changed
+- **`adversarial-review`** — replaced separate mode/rigor choices with one
+  optional `low | auto | max` intensity control, defaulting to `auto`. Reviews
+  now check exact-target session history before launching reviewers, reuse
+  unchanged coverage, and review deltas instead of repeating full panels.
+  Mode is inferred from the desired output, with explicit force-mode syntax as
+  an advanced escape hatch. Multi-reviewer synthesis cross-examines
+  disagreement and overstatement, then ranks surviving findings by evidence,
+  impact, and actionability rather than treating consensus as proof.
+
 ### Fixed
 - **`ado-pr-build-monitor`** — every poll now refreshes PR revisions and current
   required policy/run associations, with a freshness confirmation before a

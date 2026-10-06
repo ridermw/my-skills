@@ -5,7 +5,7 @@ description: 'Pressure-tests an idea, plan, or change by running separated adver
 
 # Adversarial Review
 
-Updated: October 3, 2026
+Updated: October 6, 2026
 
 ## First Response Line
 
@@ -48,22 +48,67 @@ Before you choose a mode, write one line: `Target: <exact target>`.
 
 If you cannot identify the exact target, or it differs from what the user named, ask before you launch reviewers. Give every reviewer the same target line.
 
+## Review Intensity
+
+The one public control is `low | auto | max`. `auto` is the default. Accept
+natural forms such as `/adversarial-review low: ...` and
+`/adversarial-review max: ...`; do not make the user choose a mode separately.
+
+| Intensity | Required behavior |
+| --- | --- |
+| `low` | Reuse a qualifying prior review when possible. Otherwise use `single-agent` or at most one new reviewer. Do not claim consensus. |
+| `auto` | Reuse exact-target coverage, review only changed or uncovered areas, and apply Proportionality. For substantive uncovered work, target three reviewers and cross-examine meaningful disagreement. |
+| `max` | Bypass prior-review reuse as a substitute for fresh criticism. Run a fresh three-reviewer panel when available, mandatory cross-examination, and a groupthink check. `max` never means more than three first-pass reviewers. |
+
+Intensity controls review investment, not mode. If the user does not name an
+intensity, resolve it to `auto`; never silently upgrade or downgrade an explicit
+choice. You may warn that `low` is weak for a high-consequence target, but honor
+it.
+
+## Prior Review Check
+
+Before selecting reviewers, search available session history for a completed
+adversarial review of the exact target. Match immutable identity: commit SHA,
+pull-request head SHA, content hash, or unchanged pasted text. A prior review
+qualifies only when its evidence is still accessible and the target has not
+materially changed. Coverage must also be mode-compatible: a Rubber Duck review
+does not substitute for SPAR role analysis, and SPAR does not substitute for a
+Rubber Duck defect review.
+
+- For `low`, reuse a qualifying review and launch no replacement panel.
+- For `auto`, reuse unchanged coverage. If the target changed, review only the
+  delta and any missing lens instead of repeating the whole review.
+- For `max`, bypass reuse and run fresh reviewers. Prior findings may inform
+  verification, but they do not replace the fresh first pass.
+- If the user forces a different mode from the prior review, perform the missing
+  forced-mode work. Prior evidence may be context, not substitute coverage.
+- If history is unavailable or identity cannot be proven, say so and continue
+  under the selected intensity.
+
+Do not report a reused review as newly performed consensus. Disclose what was
+reused, what changed, and which new reviewers actually ran.
+
 ## Choose the Mode
 
-| User need | Mode |
+Infer mode from the desired output, not merely from the artifact named. An
+explicit `force SPAR` or `force Rubber Duck` instruction overrides this table;
+the selected intensity still applies. Treat force-mode syntax as an advanced
+escape hatch, not another routine choice.
+
+| Desired output | Mode |
 | --- | --- |
-| Idea, proposal, strategy, product bet, architecture tradeoff | SPAR |
-| Code change, implementation plan, tests, debugging hypothesis, critique request | Rubber Duck |
+| Choice, verdict, recommendation, product bet, or architecture tradeoff | SPAR |
+| Defect assessment, review, critique, or audit of a selected path, code change, implementation plan, tests, or debugging hypothesis | Rubber Duck |
 | Ambiguous high-stakes decision | SPAR, then Rubber Duck on the favored path |
 | Unclear or out-of-scope request | Ask the user to clarify the decision or artifact before selecting a mode |
 
 ## Capability Check
 
-Apply Proportionality first. For work warranting subagents, select the eligible
-reviewer roster using the Model Diversity Heuristic and available independent
-contexts. Record the roster and count (at most three for Rubber Duck), then
-derive the execution path below. Rubber Duck dispatch reuses that selection;
-excluded providers do not count.
+Apply Review Intensity, Prior Review Check, and Proportionality first. For work
+warranting new subagents, select the eligible reviewer roster using the Model
+Diversity Heuristic and available independent contexts. Record the roster and
+count (at most three), then derive the execution path below. Dispatch reuses
+that selection; excluded providers do not count.
 
 | Capability | Execution path |
 | --- | --- |
@@ -72,13 +117,20 @@ excluded providers do not count.
 | One selected critique/generic subagent | `single-subagent` |
 | No eligible subagent can be selected | `single-agent` |
 
-For a substantive artifact, target three independent reviewer contexts whenever possible; see Proportionality below for when a smaller artifact does not warrant three. When eligible providers or independent contexts are insufficient, reduce the selected count and disclose the downgrade.
+Under `auto`, target three independent reviewer contexts for a substantive
+uncovered artifact whenever possible; see Proportionality below for when a
+smaller artifact does not warrant three. Under `low`, select at most one new
+reviewer. Under `max`, target three fresh contexts. When eligible providers or
+independent contexts are insufficient, reduce the selected count and disclose
+the downgrade.
 
 **Proportionality.** Three reviewers are for a substantive artifact — a plan, a
 design, a diff, a decision with real consequences. For a single function, a
 one-line question, or a change you could fully critique yourself in a couple of
-steps, run `single-agent`, say so, and skip the subagent overhead. Do not spawn
-reviewers whose combined cost exceeds the value of the critique.
+steps, `auto` runs `single-agent`, says so, and skips the subagent overhead.
+`low` caps new reviewers at one even for a substantive target. `max` is the
+user's explicit request to pay for the full fresh panel. Do not spawn reviewers
+whose combined cost exceeds the value authorized by the selected intensity.
 
 ## Output length
 
@@ -221,6 +273,8 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 11. Separate accepted findings from rejected or unverified concerns.
 
 Use sections: Critique target, Execution disclosure, Consensus-ranked findings, Single-reviewer findings worth considering, Recommended changes, Rejected or unverified concerns, Next action.
+When no independent consensus was performed, rename `Consensus-ranked findings`
+to `Findings`; do not imply agreement that did not occur.
 
 ## Reviewer Output Schema
 
@@ -269,12 +323,13 @@ After reviewers finish:
 
 1. Normalize equivalent findings by `dedupe_key`, title, evidence, and recommended change.
 2. Group matching findings across reviewers.
-3. Rank grouped findings by number of independent reviewers that found the issue.
-4. Break ties by severity, then confidence, then evidence quality.
-5. Keep single-reviewer findings in a separate section when they are high severity, well-evidenced, or plausibly important.
-6. Do not discard a serious issue only because one reviewer found it.
-7. Do not inflate consensus by counting the main assistant's synthesis as an additional reviewer.
-8. Treat contradictory findings as a signal. Preserve the disagreement and recommend how to resolve it.
+3. Evaluate evidence quality, practical impact, and whether the recommended change is actionable.
+4. Cross-examine material disagreement or possible overstatement as required by Review Intensity.
+5. Classify the result as confirmed, actionable single-reviewer, narrowed, contested, or rejected.
+6. Rank surviving findings by impact, actionability, confidence, and evidence quality. Use independent reviewer count as a prioritization signal and tie-breaker, not proof.
+7. Do not discard a serious issue only because one reviewer found it.
+8. Do not inflate consensus by counting the main assistant's synthesis as an additional reviewer.
+9. Preserve unresolved disagreement and state how to resolve it.
 
 For each consensus-ranked finding, show:
 
@@ -296,7 +351,16 @@ After independent first-pass reviews, the synthesizer may show reviewers the oth
 
 Do not count this second round as new independent consensus. It is for refinement, conflict discovery, and missed-assumption detection only.
 
-If all reviewers agree too neatly, run a groupthink check: ask one reviewer to identify what shared assumption could make all reviewers wrong.
+Under `auto`, cross-examination is required when reviewers disagree about a
+finding's existence, scope, severity, or recommended action, or when one
+reviewer may be overstating the evidence. Under `max`, cross-examination is
+mandatory for every critical or high finding and every disagreement.
+
+For each challenged finding, ask reviewers to `uphold`, `narrow`, `downgrade`,
+or `withdraw` it and explain the evidence. The synthesizer decides; this round
+does not add votes. If `max` reviewers agree too neatly, always run a groupthink
+check. Under `auto`, run one when agreement rests on an unverified shared
+assumption.
 
 ## Reviewer Failure Handling
 
@@ -310,13 +374,19 @@ If one or more reviewers fail:
 
 ## Judge/Synthesizer Rules
 
-The final synthesizer is a judge, not a fourth reviewer. It deduplicates, evaluates evidence, preserves disagreements, ranks findings, and recommends action. It does not add consensus votes.
+The final synthesizer is a judge, not a fourth reviewer. It deduplicates,
+evaluates evidence, challenges overstatement, preserves disagreements, ranks
+the most actionable and impactful findings, and recommends action. Consensus
+is a prioritization signal, not proof. The synthesizer does not add votes.
 
 LOC is not a proxy for risk. A tiny auth, permissions, data deletion, billing, or security-boundary change can require full adversarial review.
 
 ## Always Disclose
 
-Before any launch, write the `Target:` line (see Identify the Target) and the `Mode:` line once. Then, after the reviewers return and before the findings, write these lines. Keep each line to one sentence.
+Before any launch, write the `Target:` line (see Identify the Target), the
+`Review intensity: <low | auto | max>` line, the `Prior review:` outcome, and
+the `Mode:` line once. Then, after the review completes and before the findings,
+write these lines. Keep each line to one sentence.
 
 ```text
 Execution path: <path> (adversarial-review, Updated: <date>)
@@ -324,6 +394,10 @@ Reviewers: <launched count>; <agent type>; <model and effort for each, or model 
 Consensus ranking: <performed | not performed, with reason>
 Premortem: <one sentence that names the most damaging credible failure>
 ```
+
+Use one of these concise prior-review outcomes:
+`not found`, `reused exact target`, `reviewed delta`, `mode-incompatible`,
+`bypassed by max`, or `unavailable`.
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 
@@ -354,6 +428,9 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 | Letting reviewers influence each other | Give each reviewer the same target but not other reviewers' findings during first pass |
 | Treating consensus as proof | Consensus is a prioritization signal, not a guarantee |
 | Ignoring disagreement | Preserve contradictions and recommend a resolution path |
+| Treating reviewer count as proof | Cross-examine disagreement and rank surviving findings by evidence, impact, and actionability |
+| Repeating an unchanged review | Check exact-target history and reuse it unless `max` requests a fresh panel |
+| Making users choose mode and rigor | Expose only `low | auto | max`; infer mode unless the user explicitly forces it |
 | Using LOC as risk proxy | Small auth, billing, deletion, or security-boundary changes can be critical |
 
 ## Example
@@ -379,10 +456,12 @@ For the cache example, likely high-priority findings include auth leakage from s
 Disclosure example:
 
 ```text
-Adversarial review | Updated: October 3, 2026
+Adversarial review | Updated: October 6, 2026
 Target: plan text "cache all GET responses in memory for 10 minutes"
+Review intensity: auto
+Prior review: not found
 Mode: Rubber Duck
-Execution path: multi-model-subagents (adversarial-review, Updated: October 3, 2026)
+Execution path: multi-model-subagents (adversarial-review, Updated: October 6, 2026)
 Reviewers: 3; rubber-duck; one frontier model per preferred provider at xhigh; three independent contexts achieved
 Consensus ranking: performed
 Premortem: a shared cache key serves one user's authorized response to another user.

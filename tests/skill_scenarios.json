@@ -26,6 +26,12 @@
       "expected": "Write the first response line, then ask which pull request is the target. Do not launch reviewers until one exact URL and head commit is identified."
     },
     {
+      "id": "adversarial-intensity-and-history",
+      "skills": ["adversarial-review/SKILL.md"],
+      "input": "The user says '/adversarial-review low: review PR 42'. Session history contains a completed three-reviewer Rubber Duck review of PR 42 at the same head SHA with accessible evidence. Repeat for '/adversarial-review max: review PR 42', then for an unchanged request that says 'force SPAR'. State the mode, history action, and reviewer dispatch for each.",
+      "expected": "Low reuses the exact-target, mode-compatible prior review and launches no replacement panel. Max bypasses reuse and launches a fresh three-reviewer panel with mandatory cross-examination. The unchanged force-SPAR request honors the explicit mode override, resolves intensity to auto, and does not treat the prior Rubber Duck review as mode-compatible SPAR coverage; it performs the missing SPAR work while using prior evidence only as context. Auto remains the default when low or max is not named."
+    },
+    {
       "id": "ado-stale-success",
       "skills": ["ado-pr-build-monitor/SKILL.md"],
       "input": "After many polls, the initially tracked runs have completed/succeeded and work item 42 is linked. PR metadata and policy evaluations were last fetched at startup for revision A. The user wants the final answer now. What reads and report do you perform?",
