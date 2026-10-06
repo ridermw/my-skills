@@ -42,7 +42,8 @@ For implementation plans, code changes, tests, debugging hypotheses, or critique
 Before you choose a mode, write one line: `Target: <exact target>`.
 
 - Repository file, plan, or change: repository-relative path or diff range at the commit SHA, or `uncommitted changes on <branch> at <HEAD SHA>`.
-- Pull request: full URL plus the head commit SHA.
+- Pull request: full URL plus either the base and head commit SHAs or an
+  immutable diff hash.
 - Comment, thread, or web document: full URL.
 - Pasted text that is not in a file: its first words in quotes.
 
@@ -71,11 +72,13 @@ Before selecting reviewers, perform two distinct searches in available session
 history:
 
 1. **Exact-target reuse.** Search for a completed adversarial review matching
-   the exact target by its immutable identity: commit SHA, pull-request head SHA,
-   content hash, or unchanged pasted text. It qualifies as reusable coverage
-   only when its evidence is still accessible and its coverage is
-   mode-compatible. A Rubber Duck review does not substitute for SPAR role
-   analysis, and SPAR does not substitute for a Rubber Duck defect review.
+   the exact target by its immutable identity: commit SHA; for a pull request,
+   its full URL plus the base and head commit SHAs or an immutable diff hash;
+   content hash; or unchanged pasted text. Reuse must match that same immutable
+   identity. It qualifies as reusable coverage only when its evidence is still
+   accessible and its coverage is mode-compatible. A Rubber Duck review does
+   not substitute for SPAR role analysis, and SPAR does not substitute for a
+   Rubber Duck defect review.
 2. **Delta-baseline discovery.** When the current target has changed, also
    search for a completed review of a prior immutable revision of the same
    logical target, such as the same pull request, file, or named artifact. It
@@ -125,10 +128,16 @@ that selection; excluded providers do not count.
 
 | Capability | Execution path |
 | --- | --- |
+| Qualifying exact-target reuse under the selected mode and intensity; zero new reviewers | `reused-review` |
 | At least two selected reviewers on distinct eligible preferred providers with confirmed model overrides, plus an optional rule 9 reviewer | `multi-model-subagents` |
 | At least two selected independent contexts but distinct model control is unavailable or unconfirmed | `parallel-subagents` |
 | One selected critique/generic subagent | `single-subagent` |
 | No eligible subagent can be selected | `single-agent` |
+
+For `reused-review`, report the accessible prior review in the selected mode
+without presenting it as newly performed consensus. The current-run
+`Reviewers` launched count is 0; disclose which prior panel or reviewers and
+which evidence were reused.
 
 Under `auto`, target three independent reviewer contexts for a substantive
 uncovered artifact whenever possible; see Proportionality below for when a
@@ -264,9 +273,17 @@ Do not send identical persona instructions to all reviewers unless the user expl
 1. State: `Mode: SPAR`.
 2. Frame the core tension in one sentence.
 3. Pick 3-5 roles with genuinely conflicting incentives.
-4. If execution path is `multi-model-subagents` or `parallel-subagents`, dispatch one role per agent in parallel with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the path is `single-subagent`, launch one role that way and simulate the other roles sequentially. Otherwise simulate all roles sequentially. Say which roles were simulated.
+4. Assign one primary role per selected independent reviewer context, up to the
+   cap of at most three first-pass reviewer contexts, and dispatch those roles
+   in parallel with `agent_type: rubber-duck`. Start each prompt with the
+   reviewer guard, then the target line. Cover the remaining roles sequentially
+   in the main synthesizer without counting it as another reviewer. For
+   `single-subagent`, assign one primary role to that context and cover the
+   rest the same way; for `single-agent`, cover all selected roles sequentially.
+   For `reused-review`, report the accessible prior role perspectives and do not
+   create new role perspectives. Disclose simulated roles and reused roles.
 5. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
-6. Synthesize only after role perspectives.
+6. Synthesize only after every selected role has a perspective.
 7. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
 
 Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open question(s).
@@ -280,9 +297,11 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 5. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
 6. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
 7. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
-8. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
-9. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
-10. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
+8. For `reused-review`, report the accessible prior findings and do not run or
+   launch a new critique. Distinguish reused evidence from current synthesis.
+9. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
+10. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
+11. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
 11. Separate accepted findings from rejected or unverified concerns.
 
 Use sections: Critique target, Execution disclosure, Consensus-ranked findings, Single-reviewer findings worth considering, Recommended changes, Rejected or unverified concerns, Next action.
@@ -417,8 +436,11 @@ Premortem: <one sentence that names the most damaging credible failure>
 ```
 
 Use one of these concise prior-review outcomes:
-`not found`, `reused exact target`, `reviewed delta`, `mode-incompatible`,
+`not found`, `reused exact target`, `delta baseline found`, `mode-incompatible`,
 `bypassed by max`, or `unavailable`.
+
+Pre-launch status reports only whether a qualifying delta baseline was found.
+Post-review execution details may say the delta was reviewed only after completion.
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 

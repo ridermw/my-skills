@@ -497,7 +497,10 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertLess(self.order.index("Identify the Target"), self.order.index("Choose the Mode"))
         target = self.section("Identify the Target")
         self.assertRegex(target, r"Repository file, plan, or change: [^\n]*commit SHA")
-        self.assertRegex(target, r"Pull request: [^\n]*URL[^\n]*head commit SHA")
+        self.assertRegex(
+            target,
+            r"Pull request: [^\n]*URL[^\n]*(?:base and head commit SHAs|immutable diff hash)",
+        )
         self.assertRegex(target, r"Pasted text that is not in a file: [^\n]*quotes")
         self.assertIn("ask before you launch reviewers", target)
 
@@ -520,10 +523,34 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(prior, r"(?i)available session history")
         self.assertRegex(prior, r"(?i)exact target")
         self.assertRegex(prior, r"(?i)commit SHA|content hash")
+        self.assertRegex(
+            prior,
+            r"(?i)pull request.*full URL.*(?:base and head commit SHAs|immutable diff hash)",
+        )
+        self.assertRegex(prior, r"(?i)reuse.*same immutable identity")
         self.assertRegex(prior, r"(?i)review only the delta")
         self.assertRegex(prior, r"(?i)`max`[^\n]*bypass")
         self.assertRegex(prior, r"(?i)mode-compatible")
         self.assertRegex(prior, r"(?i)forces a different mode[^\n]*forced-mode work")
+
+    def test_exact_target_reuse_has_a_zero_reviewer_execution_path(self):
+        capability = re.sub(r"\s+", " ", self.section("Capability Check"))
+        self.assertIn("`reused-review`", capability)
+        self.assertRegex(capability, r"(?i)qualifying exact-target reuse.*zero new reviewers")
+        self.assertRegex(capability, r"(?i)current-run.*Reviewers.*0")
+        self.assertRegex(
+            capability,
+            r"(?i)prior (?:panel|reviewers).*evidence.*reused",
+        )
+        self.assertRegex(
+            capability,
+            r"(?i)not.*newly performed consensus|do not.*newly performed consensus",
+        )
+        for mode in ("SPAR Mode", "Rubber Duck Mode"):
+            section = re.sub(r"\s+", " ", self.section(mode))
+            self.assertRegex(section, r"(?i)`reused-review`")
+            self.assertRegex(section, r"(?i)prior (?:role perspectives|findings)")
+            self.assertRegex(section, r"(?i)do not (?:create|run|launch).*new")
 
     def test_changed_target_uses_prior_revision_only_as_delta_baseline(self):
         prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
@@ -558,6 +585,21 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_spar_handles_the_single_subagent_path(self):
         self.assertIn("`single-subagent`", self.section("SPAR Mode"))
 
+    def test_spar_covers_every_selected_role_without_exceeding_three_first_pass_reviewers(self):
+        spar = re.sub(r"\s+", " ", self.section("SPAR Mode"))
+        self.assertRegex(spar, r"(?i)pick 3-5 roles")
+        self.assertRegex(
+            spar,
+            r"(?i)one primary role per selected independent (?:reviewer )?context",
+        )
+        self.assertRegex(spar, r"(?i)at most three first-pass reviewer contexts")
+        self.assertRegex(spar, r"(?i)remaining roles.*sequentially.*main synthesizer")
+        self.assertRegex(spar, r"(?i)disclose.*simulated roles")
+        self.assertRegex(
+            spar,
+            r"(?i)synthesize only after every (?:selected )?role has a perspective",
+        )
+
     def test_reviewers_use_rubber_duck_agent_type_with_disclosed_fallback(self):
         dispatch = self.section("Rubber Duck Mode") + self.section("SPAR Mode")
         self.assertIn("agent_type: rubber-duck", dispatch)
@@ -572,6 +614,17 @@ class AdversarialReviewContractTests(unittest.TestCase):
         block = re.search(r"```text\n(.*?)```", disclose, re.S).group(1)
         self.assertNotIn("Target:", block, "Target is written once, before mode selection")
         self.assertIn("after the review completes", disclose)
+        outcomes = re.search(
+            r"Use one of these concise prior-review outcomes:\n(.*?)\n\n",
+            disclose,
+            re.S,
+        ).group(1)
+        self.assertIn("`delta baseline found`", outcomes)
+        self.assertNotIn("`reviewed delta`", outcomes)
+        self.assertRegex(
+            disclose,
+            r"(?i)delta (?:was )?reviewed.*only after.*complet",
+        )
 
     def test_cross_examination_calibrates_overstatement_and_disagreement(self):
         cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
