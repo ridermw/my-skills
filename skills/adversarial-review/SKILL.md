@@ -67,17 +67,30 @@ it.
 
 ## Prior Review Check
 
-Before selecting reviewers, search available session history for a completed
-adversarial review of the exact target. Match immutable identity: commit SHA,
-pull-request head SHA, content hash, or unchanged pasted text. A prior review
-qualifies only when its evidence is still accessible and the target has not
-materially changed. Coverage must also be mode-compatible: a Rubber Duck review
-does not substitute for SPAR role analysis, and SPAR does not substitute for a
-Rubber Duck defect review.
+Before selecting reviewers, perform two distinct searches in available session
+history:
 
-- For `low`, reuse a qualifying review and launch no replacement panel.
-- For `auto`, reuse unchanged coverage. If the target changed, review only the
-  delta and any missing lens instead of repeating the whole review.
+1. **Exact-target reuse.** Search for a completed adversarial review matching
+   the exact target by its immutable identity: commit SHA, pull-request head SHA,
+   content hash, or unchanged pasted text. It qualifies as reusable coverage
+   only when its evidence is still accessible and its coverage is
+   mode-compatible. A Rubber Duck review does not substitute for SPAR role
+   analysis, and SPAR does not substitute for a Rubber Duck defect review.
+2. **Delta-baseline discovery.** When the current target has changed, also
+   search for a completed review of a prior immutable revision of the same
+   logical target, such as the same pull request, file, or named artifact. It
+   qualifies only when both the current and prior revisions and the prior
+   evidence remain accessible, their relationship and delta can be established,
+   and the prior coverage is mode-compatible. Use it only as a delta baseline,
+   never as exact-target reuse or proof that the current target was reviewed.
+
+- For `low`, reuse qualifying exact-target coverage and launch no replacement
+  panel.
+- For `low`, if only a qualifying delta baseline exists, use it to scope at most
+  one new reviewer to changed or uncovered work.
+- For `auto`, reuse qualifying exact-target coverage. For a changed target with
+  a qualifying delta baseline, review only the delta and any missing lens
+  instead of repeating the whole review.
 - For `max`, bypass reuse and run fresh reviewers. Prior findings may inform
   verification, but they do not replace the fresh first pass.
 - If the user forces a different mode from the prior review, perform the missing
@@ -351,16 +364,24 @@ After independent first-pass reviews, the synthesizer may show reviewers the oth
 
 Do not count this second round as new independent consensus. It is for refinement, conflict discovery, and missed-assumption detection only.
 
-Under `auto`, cross-examination is required when reviewers disagree about a
-finding's existence, scope, severity, or recommended action, or when one
-reviewer may be overstating the evidence. Under `max`, cross-examination is
-mandatory for every critical or high finding and every disagreement.
+Cross-examination targets and outcomes depend on the review mode:
 
-For each challenged finding, ask reviewers to `uphold`, `narrow`, `downgrade`,
-or `withdraw` it and explain the evidence. The synthesizer decides; this round
-does not add votes. If `max` reviewers agree too neatly, always run a groupthink
-check. Under `auto`, run one when agreement rests on an unverified shared
-assumption.
+- **Rubber Duck:** Challenge each material finding on existence, scope,
+  severity, and recommended action. Ask reviewers to `uphold`, `narrow`,
+  `downgrade`, or `withdraw` it and explain the evidence.
+- **SPAR:** Challenge material role claims across objections, support,
+  assumptions, tradeoffs, and failure modes. Ask reviewers to state whether
+  each claim stands, narrows, is rebutted, or exposes an unresolved tradeoff or
+  unresolved assumption, and explain the evidence.
+
+Under `auto`, cross-examination is required for material disagreement or
+suspected overstatement in either mode. Under `max`, it is mandatory for every
+critical or high Rubber Duck finding, every material SPAR claim that could
+change the verdict or recommendation, and every disagreement.
+
+The synthesizer decides; this round does not add votes. If `max` reviewers agree
+too neatly, always run a groupthink check. Under `auto`, run one when agreement
+rests on an unverified shared assumption.
 
 ## Reviewer Failure Handling
 

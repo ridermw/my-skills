@@ -525,6 +525,15 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(prior, r"(?i)mode-compatible")
         self.assertRegex(prior, r"(?i)forces a different mode[^\n]*forced-mode work")
 
+    def test_changed_target_uses_prior_revision_only_as_delta_baseline(self):
+        prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
+        self.assertRegex(prior, r"(?i)exact-target reuse")
+        self.assertRegex(prior, r"(?i)prior immutable revision")
+        self.assertRegex(prior, r"(?i)same logical target")
+        self.assertRegex(prior, r"(?i)both (?:the )?current and prior revisions.*accessible")
+        self.assertRegex(prior, r"(?i)mode-compatible")
+        self.assertRegex(prior, r"(?i)only as (?:a )?delta baseline")
+
     def test_mode_is_automatic_unless_user_explicitly_forces_it(self):
         mode = self.section("Choose the Mode")
         self.assertRegex(mode, r"(?i)desired output")
@@ -566,11 +575,28 @@ class AdversarialReviewContractTests(unittest.TestCase):
 
     def test_cross_examination_calibrates_overstatement_and_disagreement(self):
         cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
+        self.assertRegex(
+            cross,
+            r"(?i)Rubber Duck.*existence.*scope.*severity.*recommended action",
+        )
         for outcome in ("uphold", "narrow", "downgrade", "withdraw"):
             self.assertIn(outcome, cross.lower())
-        self.assertRegex(cross, r"(?i)`auto`[^\n]*disagree")
-        self.assertRegex(cross, r"(?i)`max`[^\n]*mandatory")
-        self.assertRegex(cross, r"(?i)overstat")
+        self.assertRegex(
+            cross,
+            r"(?i)SPAR.*objections.*support.*assumptions.*tradeoffs.*failure modes",
+        )
+        for outcome in ("stands", "narrows", "rebutted", "unresolved tradeoff",
+                        "unresolved assumption"):
+            self.assertIn(outcome, cross.lower())
+        self.assertRegex(
+            cross,
+            r"(?i)`auto`.*material disagreement.*suspected overstatement.*either mode",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`max`.*critical or high Rubber Duck finding"
+            r".*material SPAR claim.*verdict or recommendation.*every disagreement",
+        )
         judge = re.sub(r"\s+", " ", self.section("Judge/Synthesizer Rules"))
         self.assertRegex(judge, r"(?i)actionable")
         self.assertRegex(judge, r"(?i)consensus.*signal")
