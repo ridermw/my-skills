@@ -302,7 +302,7 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 9. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
 10. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
 11. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
-11. Separate accepted findings from rejected or unverified concerns.
+12. Separate accepted findings from rejected or unverified concerns.
 
 Use sections: Critique target, Execution disclosure, Consensus-ranked findings, Single-reviewer findings worth considering, Recommended changes, Rejected or unverified concerns, Next action.
 When no independent consensus was performed, rename `Consensus-ranked findings`

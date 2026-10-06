@@ -605,6 +605,13 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertIn("agent_type: rubber-duck", dispatch)
         self.assertIn("rubber-duck unavailable", self.body)
 
+    def test_rubber_duck_steps_are_sequentially_numbered(self):
+        numbers = [
+            int(match)
+            for match in re.findall(r"(?m)^(\d+)\. ", self.section("Rubber Duck Mode"))
+        ]
+        self.assertEqual(numbers, list(range(1, len(numbers) + 1)))
+
     def test_disclosure_names_path_with_updated_date_and_one_premortem_sentence(self):
         disclose = self.section("Always Disclose")
         self.assertRegex(disclose, r"Execution path: <[^>]+> \(adversarial-review, Updated: <date>\)")
