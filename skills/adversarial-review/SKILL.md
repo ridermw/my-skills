@@ -1,6 +1,6 @@
 ---
 name: adversarial-review
-description: 'Pressure-tests an idea, plan, or change by running separated adversarial reviewer perspectives rather than a generic pros/cons list, then synthesizes consensus-ranked findings with severity, confidence and cited evidence. SPAR mode debates a decision through roles with conflicting incentives; Rubber Duck mode runs independent critique reviewers over an artifact and ranks what they agree on. Always discloses the execution path it actually achieved and never claims reviewers or model diversity it did not. Use when the user asks to pressure-test, stress-test, poke holes in, red-team or critique an idea, proposal, strategy, architecture tradeoff, code change, test plan, debugging hypothesis, suspected bug or risky decision. For a bounded pre-coding readiness gate on a concrete implementation plan use plan-exit-review, and for a maximum-rigor audit of a high-risk plan use plan-mega-review; this skill is adversarial critique of any artifact or decision, not a plan-approval workflow.'
+description: 'Pressure-tests an idea, plan, or change by reusing compatible prior coverage or running up to three separated adversarial reviewer perspectives instead of a generic pros/cons list, then synthesizes evidence-ranked findings without claiming consensus when none ran. SPAR mode debates a decision through roles with conflicting incentives; Rubber Duck mode critiques a selected artifact. Always discloses the execution path it actually achieved and never claims reviewers or model diversity it did not. Use when the user asks to pressure-test, stress-test, poke holes in, red-team or critique an idea, proposal, strategy, architecture tradeoff, code change, test plan, debugging hypothesis, suspected bug or risky decision. For a bounded pre-coding readiness gate on a concrete implementation plan use plan-exit-review, and for a maximum-rigor audit of a high-risk plan use plan-mega-review; this skill is adversarial critique of any artifact or decision, not a plan-approval workflow.'
 ---
 
 # Adversarial Review
@@ -66,10 +66,24 @@ intensity, resolve it to `auto`; never silently upgrade or downgrade an explicit
 choice. You may warn that `low` is weak for a high-consequence target, but honor
 it.
 
+## Choose the Mode
+
+Infer mode from the desired output, not merely from the artifact named. An
+explicit `force SPAR` or `force Rubber Duck` instruction overrides this table;
+the selected intensity still applies. Treat force-mode syntax as an advanced
+escape hatch, not another routine choice.
+
+| Desired output | Mode |
+| --- | --- |
+| Choice, verdict, recommendation, product bet, or architecture tradeoff | SPAR |
+| Defect assessment, review, critique, or audit of a selected path, code change, implementation plan, tests, or debugging hypothesis | Rubber Duck |
+| Ambiguous high-stakes decision | SPAR, then Rubber Duck on the favored path |
+| Unclear or out-of-scope request | Ask the user to clarify the decision or artifact before selecting a mode |
+
 ## Prior Review Check
 
-Before selecting reviewers, perform two distinct searches in available session
-history:
+After selecting the mode and before selecting reviewers, perform two distinct
+searches in available session history:
 
 1. **Exact-target reuse.** Search for a completed adversarial review matching
    the exact target by its immutable identity: commit SHA; for a pull request,
@@ -103,20 +117,6 @@ history:
 
 Do not report a reused review as newly performed consensus. Disclose what was
 reused, what changed, and which new reviewers actually ran.
-
-## Choose the Mode
-
-Infer mode from the desired output, not merely from the artifact named. An
-explicit `force SPAR` or `force Rubber Duck` instruction overrides this table;
-the selected intensity still applies. Treat force-mode syntax as an advanced
-escape hatch, not another routine choice.
-
-| Desired output | Mode |
-| --- | --- |
-| Choice, verdict, recommendation, product bet, or architecture tradeoff | SPAR |
-| Defect assessment, review, critique, or audit of a selected path, code change, implementation plan, tests, or debugging hypothesis | Rubber Duck |
-| Ambiguous high-stakes decision | SPAR, then Rubber Duck on the favored path |
-| Unclear or out-of-scope request | Ask the user to clarify the decision or artifact before selecting a mode |
 
 ## Capability Check
 

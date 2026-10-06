@@ -462,6 +462,8 @@ class AdversarialReviewContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         text = (ROOT / "skills" / "adversarial-review" / "SKILL.md").read_text()
+        header = text.split("---", 2)[1]
+        cls.description = re.search(r"^description: ['\"](.*)['\"]$", header, re.M).group(1)
         cls.body = text.split("---", 2)[2].lstrip()
         cls.sections = {}
         for chunk in cls.body.split("\n## ")[1:]:
@@ -516,7 +518,14 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(intensity, r"(?i)max[^\n]*fresh three-reviewer")
         self.assertNotRegex(intensity, r"`medium`|`high`")
 
+    def test_public_description_covers_reuse_and_non_consensus_paths(self):
+        self.assertRegex(self.description, r"(?i)reusing compatible prior coverage")
+        self.assertRegex(self.description, r"(?i)up to three separated")
+        self.assertRegex(self.description, r"(?i)without claiming consensus when none ran")
+
     def test_prior_review_reuse_precedes_capability_selection(self):
+        self.assertLess(self.order.index("Choose the Mode"),
+                        self.order.index("Prior Review Check"))
         self.assertLess(self.order.index("Prior Review Check"),
                         self.order.index("Capability Check"))
         prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
