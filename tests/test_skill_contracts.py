@@ -606,6 +606,12 @@ class AdversarialReviewContractTests(unittest.TestCase):
                 r"(?i)challenge coverage incomplete.*prior (?:evidence|findings)"
                 r".*independent challenge pass.*not.*first-pass",
             )
+        spar = re.sub(r"\s+", " ", self.section("SPAR Mode"))
+        self.assertRegex(
+            spar,
+            r"(?i)challenge coverage incomplete.*do not select fresh role"
+            r".*prior role set.*challenge context",
+        )
 
     def test_common_mistake_does_not_bypass_auto_challenge_coverage(self):
         mistakes = re.sub(r"\s+", " ", self.section("Common Mistakes"))
@@ -741,7 +747,8 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             spar,
-            r"(?i)(?:all other|non-reused).*paths.*pick 3-5 fresh roles",
+            r"(?i)paths other than.*`reused-review`"
+            r".*`challenge coverage incomplete`.*pick 3-5 fresh roles",
         )
         self.assertRegex(
             spar,

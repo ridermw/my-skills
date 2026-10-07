@@ -303,21 +303,23 @@ Do not send identical persona instructions to all reviewers unless the user expl
 3. For `challenge coverage incomplete`, give the fresh challenge reviewer the
    normalized prior evidence, including the retained role claims and the
    missing challenge questions. Run an `independent challenge pass`, not a
-   first-pass role review. If no fresh challenge reviewer is available, run a
-   self-challenge pass against the same prior evidence.
+   first-pass role review. Do not select fresh role perspectives; use the prior
+   role set only as challenge context. If no fresh challenge reviewer is
+   available, run a self-challenge pass against the same prior evidence.
 4. For `reused-review`, retain and report the accessible prior review's role
-   set. For all other paths, pick 3-5 fresh roles with genuinely conflicting
-   incentives.
-5. For fresh review, assign one primary role per selected independent reviewer
-   context, up to the cap of at most three first-pass reviewer contexts, and
-   dispatch those roles in parallel with `agent_type: rubber-duck`. Start each
-   prompt with the reviewer guard, then the target line. Cover extra fresh roles
-   sequentially in the main synthesizer without counting it as another
-   reviewer. For `single-subagent`, assign one primary role to that context and
-   cover the rest the same way; for `single-agent`, cover all selected roles
-   sequentially. For `reused-review`, use the accessible prior role perspectives
-   for the retained roles and do not create new role perspectives. Disclose
-   simulated roles and reused roles.
+   set. For paths other than `reused-review` and
+   `challenge coverage incomplete`, pick 3-5 fresh roles with genuinely
+   conflicting incentives.
+5. For a fresh first-pass review, assign one primary role per selected
+   independent reviewer context, up to the cap of at most three first-pass
+   reviewer contexts, and dispatch those roles in parallel with
+   `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then
+   the target line. Cover extra fresh roles sequentially in the main synthesizer
+   without counting it as another reviewer. For `single-subagent`, assign one
+   primary role to that context and cover the rest the same way; for
+   `single-agent`, cover all selected roles sequentially. For `reused-review`,
+   use the accessible prior role perspectives for the retained roles and do not
+   create new role perspectives. Disclose simulated roles and reused roles.
 6. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
 7. Synthesize only after every selected or retained role has a perspective.
 8. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
