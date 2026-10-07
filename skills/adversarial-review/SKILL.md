@@ -110,12 +110,15 @@ searches in available session history:
    mode-compatible. A Rubber Duck review does not substitute for SPAR role
    analysis, and SPAR does not substitute for a Rubber Duck defect review.
    Under `auto`, exact-target reuse must include all challenge coverage required
-   by the selected intensity: cross-examination for material disagreement or
-   suspected overstatement, and a groupthink check when agreement rests on an
-   unverified shared assumption. If required challenge coverage is incomplete,
-   the prior review does not qualify for `reused-review`. Do not resume prior
-   reviewer contexts; use the prior evidence as context and launch one
-   fresh challenge reviewer before synthesis. Supply the normalized prior
+   by the selected intensity. A completed challenge round through the
+   Cross-Examination Round capability order is qualifying coverage whether it
+   used reviewer cross-examination, an independent challenge pass, or a
+   self-challenge pass. Require that coverage for material disagreement or
+   suspected overstatement, and require a groupthink check when agreement rests
+   on an unverified shared assumption. If required challenge coverage is
+   incomplete, the prior review does not qualify for `reused-review`. Do not
+   resume prior reviewer contexts; use the prior evidence as context and launch
+   one fresh challenge reviewer before synthesis. Supply the normalized prior
    findings and the missing challenge questions, and call the result an
    `independent challenge pass`, not a new first-pass review. Use
    `single-subagent` and report the current-run `Reviewers` count as 1. If a
@@ -496,6 +499,10 @@ If one or more reviewers fail:
 - Do not invent missing reviewer findings.
 - If a required follow-up round cannot resume the original reviewers, use the
   Cross-Examination Round capability order and disclose the fallback.
+- For `challenge coverage incomplete`, if the fresh challenge reviewer launches
+  but fails or returns unusable work, run a self-challenge pass against the
+  normalized prior evidence and missing challenge questions. Do not replace
+  this remediation with an ordinary single-agent critique.
 - If no reviewer returns usable findings under `max`, fall back to
   `single-agent` critique, apply the degraded max self-challenge behavior, and
   disclose the fallback. Otherwise, fall back to `single-agent` critique and

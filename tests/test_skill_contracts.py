@@ -585,6 +585,11 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             prior,
+            r"(?i)completed challenge round.*capability order"
+            r".*qualifying coverage",
+        )
+        self.assertRegex(
+            prior,
             r"(?i)material disagreement|suspected overstatement",
         )
         self.assertRegex(
@@ -957,6 +962,16 @@ class AdversarialReviewContractTests(unittest.TestCase):
             failure,
             r"(?i)no reviewer returns usable findings.*`max`"
             r".*degraded.*self-challenge",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)`challenge coverage incomplete`"
+            r".*fresh challenge reviewer.*(?:fails|unusable)"
+            r".*self-challenge.*prior evidence",
+        )
+        self.assertLess(
+            failure.index("`challenge coverage incomplete`"),
+            failure.index("Otherwise, fall back"),
         )
         self.assertRegex(
             failure,
