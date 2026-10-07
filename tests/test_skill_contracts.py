@@ -516,6 +516,16 @@ class AdversarialReviewContractTests(unittest.TestCase):
             r"[^\n]*(?:immutable revision|content hash|snapshot hash)",
         )
         self.assertRegex(target, r"Pasted text that is not in a file: [^\n]*quotes")
+        normalized_target = re.sub(r"\s+", " ", target)
+        self.assertRegex(
+            normalized_target,
+            r"(?i)`sha256:<64 lowercase hex>`.*line endings.*LF"
+            r".*UTF-8.*without BOM.*no whitespace trimming",
+        )
+        self.assertRegex(
+            normalized_target,
+            r"(?i)binary.*raw bytes|raw bytes.*binary",
+        )
         self.assertIn("ask before you launch reviewers", target)
 
     def test_review_intensity_is_one_public_control_with_auto_default(self):
@@ -798,6 +808,14 @@ class AdversarialReviewContractTests(unittest.TestCase):
             disclose,
             r"(?is)delta (?:path|baseline).*pre-launch"
             r".*delta (?:was )?reviewed.*only after.*complet",
+        )
+
+    def test_example_target_includes_deterministic_content_hash(self):
+        example = self.section("Example")
+        self.assertIn(
+            "Target: plan text \"cache all GET responses in memory for 10 minutes\" "
+            "sha256:c34a787626741d4c17aba7a421f9e45fda204450e49509c76754dc99b980fcca",
+            example,
         )
 
     def test_cross_examination_calibrates_overstatement_and_disagreement(self):

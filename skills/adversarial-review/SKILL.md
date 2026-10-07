@@ -54,6 +54,12 @@ snapshot; a locator alone is not enough for exact-target reuse.
 - Pasted text that is not in a file: its first words in quotes plus a content
   hash.
 
+Format every content, diff, or snapshot hash as
+`sha256:<64 lowercase hex>`. For textual inputs, normalize CRLF and CR line
+endings to LF, encode as UTF-8 without BOM, and hash the exact bytes with no
+whitespace trimming or parsed-format reserialization. For binary inputs or
+already captured binary snapshots, hash the raw bytes.
+
 If you cannot identify the exact target, or it differs from what the user named, ask before you launch reviewers. Give every reviewer the same target line.
 
 ## Review Intensity
@@ -597,7 +603,7 @@ Disclosure example:
 
 ```text
 Adversarial review | Updated: October 7, 2026
-Target: plan text "cache all GET responses in memory for 10 minutes"
+Target: plan text "cache all GET responses in memory for 10 minutes" sha256:c34a787626741d4c17aba7a421f9e45fda204450e49509c76754dc99b980fcca
 Review intensity: auto
 Prior review: not found
 Mode: Rubber Duck
