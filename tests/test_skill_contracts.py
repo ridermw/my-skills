@@ -701,6 +701,27 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(judge, r"(?i)actionable")
         self.assertRegex(judge, r"(?i)consensus.*signal")
 
+    def test_ranking_is_impact_first_and_examples_do_not_sort_by_reviewer_count(self):
+        self.assertNotIn("consensus-ranked", self.body.lower())
+        aggregation = re.sub(r"\s+", " ", self.section("Consensus Aggregation"))
+        self.assertRegex(
+            aggregation,
+            r"(?i)rank surviving findings by impact, actionability, confidence, "
+            r"and evidence quality",
+        )
+        self.assertRegex(
+            aggregation,
+            r"(?i)reviewer count.*prioritization signal and tie-breaker, not proof",
+        )
+        example = re.sub(r"\s+", " ", self.section("Example"))
+        self.assertRegex(
+            example,
+            r"(?i)rank by impact, actionability, confidence, and evidence quality"
+            r".*reviewer count only as a tie-breaker",
+        )
+        self.assertLess(example.index("found by 1 reviewer"),
+                        example.index("found by 3 reviewers"))
+
     def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
         self.assertIn("Pass an explicit `model` for every reviewer", models)

@@ -5,7 +5,7 @@ description: 'Pressure-tests an idea, plan, or change by reusing compatible prio
 
 # Adversarial Review
 
-Updated: October 6, 2026
+Updated: October 7, 2026
 
 ## First Response Line
 
@@ -35,7 +35,7 @@ If your own prompt starts with `Reviewer guard:`, you are a reviewer. Do not cho
 
 Stress-test thinking before committing. Use separated perspectives first, then synthesize; do not collapse into a generic pros/cons list.
 
-For implementation plans, code changes, tests, debugging hypotheses, or critique requests, prefer independent reviewer contexts and consensus-ranked findings. Consensus is useful only when independence is real.
+For implementation plans, code changes, tests, debugging hypotheses, or critique requests, prefer independent reviewer contexts and evidence-ranked findings. Consensus is useful only when independence is real.
 
 ## Identify the Target
 
@@ -160,7 +160,7 @@ Match length to the findings, not to the section list. Report every section the
 mode calls for, but collapse an empty one to a single line instead of padding
 it. Lead with the highest-priority finding. Do not restate the artifact back to
 the user, and do not repeat the same finding in full in both the
-consensus-ranked list and the recommended-changes list — cross-reference it.
+priority-ranked list and the recommended-changes list — cross-reference it.
 
 ## Model Diversity Heuristic
 
@@ -307,9 +307,10 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 11. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
 12. Separate accepted findings from rejected or unverified concerns.
 
-Use sections: Critique target, Execution disclosure, Consensus-ranked findings, Single-reviewer findings worth considering, Recommended changes, Rejected or unverified concerns, Next action.
-When no independent consensus was performed, rename `Consensus-ranked findings`
-to `Findings`; do not imply agreement that did not occur.
+Use sections: Critique target, Execution disclosure, Priority-ranked findings,
+Single-reviewer findings worth considering, Recommended changes, Rejected or
+unverified concerns, Next action. State reviewer support as evidence for each
+finding without making it the ranking rule.
 
 ## Reviewer Output Schema
 
@@ -366,7 +367,7 @@ After reviewers finish:
 8. Do not inflate consensus by counting the main assistant's synthesis as an additional reviewer.
 9. Preserve unresolved disagreement and state how to resolve it.
 
-For each consensus-ranked finding, show:
+For each priority-ranked finding, show:
 
 ```text
 Priority:
@@ -491,31 +492,36 @@ Never pretend agents were launched or models were changed. Say an agent was laun
 
 User: "Use adversarial-review on this plan: cache all GET responses in memory for 10 minutes."
 
-Expected shape: choose Rubber Duck mode; disclose whether three model-diverse subagents were launched; collect independent findings; normalize equivalent issues; rank by consensus.
+Expected shape: choose Rubber Duck mode; disclose whether three model-diverse
+subagents were launched; collect independent findings; normalize equivalent
+issues; rank by impact, actionability, confidence, and evidence quality, using
+reviewer count only as a tie-breaker.
 
-Example consensus:
+Example findings:
 
-- Reviewer A found issues 1, 2, and 3.
-- Reviewer B found issues 2, 3, and 4.
-- Reviewer C found issues 1 and 2.
+- Reviewer A found auth leakage, stale authorization, and memory growth.
+- Reviewer B found stale authorization and memory growth.
+- Reviewer C found memory growth and missing observability.
 
 Final ranking:
 
-1. Issue 2: found by 3 reviewers.
-2. Issues 1 and 3: found by 2 reviewers.
-3. Issue 4: found by 1 reviewer, retained only if severity/evidence justifies it.
+1. Auth leakage: critical, high-confidence evidence, found by 1 reviewer; first
+   because the impact and evidence dominate the support count.
+2. Stale authorization: high impact, found by 2 reviewers.
+3. Memory growth: medium impact, found by 3 reviewers.
+4. Missing observability: medium impact, found by 1 reviewer.
 
 For the cache example, likely high-priority findings include auth leakage from shared cache keys, invalidation gaps, per-user/per-permission cache keys, stale reads, memory growth, missing observability, and missing tests for authorization boundaries.
 
 Disclosure example:
 
 ```text
-Adversarial review | Updated: October 6, 2026
+Adversarial review | Updated: October 7, 2026
 Target: plan text "cache all GET responses in memory for 10 minutes"
 Review intensity: auto
 Prior review: not found
 Mode: Rubber Duck
-Execution path: multi-model-subagents (adversarial-review, Updated: October 6, 2026)
+Execution path: multi-model-subagents (adversarial-review, Updated: October 7, 2026)
 Reviewers: 3; rubber-duck; one frontier model per preferred provider at xhigh; three independent contexts achieved
 Consensus ranking: performed
 Premortem: a shared cache key serves one user's authorized response to another user.
