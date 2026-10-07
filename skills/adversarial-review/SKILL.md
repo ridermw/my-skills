@@ -103,11 +103,12 @@ searches in available session history:
    coverage only when its evidence is still accessible and its coverage is
    mode-compatible. A Rubber Duck review does not substitute for SPAR role
    analysis, and SPAR does not substitute for a Rubber Duck defect review.
-   Under `auto`, exact-target reuse must also include the challenge coverage
-   required for any material disagreement or suspected overstatement. If those
-   claims remain unresolved, the prior review does not qualify for
-   `reused-review`; use its evidence as context and launch targeted fresh
-   reviewer coverage to challenge the unresolved claims before synthesis.
+   Under `auto`, exact-target reuse must include all challenge coverage required
+   by the selected intensity: cross-examination for material disagreement or
+   suspected overstatement, and a groupthink check when agreement rests on an
+   unverified shared assumption. If required challenge coverage is incomplete,
+   the prior review does not qualify for `reused-review`; use its evidence as
+   context and launch targeted fresh reviewer coverage before synthesis.
 2. **Delta-baseline discovery.** When the current target has changed, also
    search for a completed review of a prior immutable revision of the same
    logical target, such as the same pull request, file, or named artifact. It
@@ -499,8 +500,9 @@ Use one of these concise prior-review outcomes:
 `not found`, `reused exact target`, `delta baseline found`, `mode-incompatible`,
 `challenge coverage incomplete`, `bypassed by max`, or `unavailable`.
 
-Pre-launch status reports only whether a qualifying delta baseline was found.
-Post-review execution details may say the delta was reviewed only after completion.
+For the delta baseline path, pre-launch status reports only whether a qualifying
+baseline was found. Post-review execution details may say the delta was reviewed
+only after completion.
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 

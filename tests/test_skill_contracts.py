@@ -579,6 +579,10 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             prior,
+            r"(?i)groupthink.*unverified shared assumption",
+        )
+        self.assertRegex(
+            prior,
             r"(?i)not.*`reused-review`.*targeted fresh reviewer",
         )
 
@@ -745,7 +749,8 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertNotIn("`reviewed delta`", outcomes)
         self.assertRegex(
             disclose,
-            r"(?i)delta (?:was )?reviewed.*only after.*complet",
+            r"(?is)delta (?:path|baseline).*pre-launch"
+            r".*delta (?:was )?reviewed.*only after.*complet",
         )
 
     def test_cross_examination_calibrates_overstatement_and_disagreement(self):
