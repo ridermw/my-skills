@@ -1,5 +1,6 @@
 """Exercise the shipped shell examples against isolated, local-only fixtures."""
 
+import json
 import os
 from pathlib import Path
 import re
@@ -462,6 +463,8 @@ class AdversarialReviewContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         text = (ROOT / "skills" / "adversarial-review" / "SKILL.md").read_text()
+        header = text.split("---", 2)[1]
+        cls.description = re.search(r"^description: ['\"](.*)['\"]$", header, re.M).group(1)
         cls.body = text.split("---", 2)[2].lstrip()
         cls.sections = {}
         for chunk in cls.body.split("\n## ")[1:]:
@@ -479,6 +482,13 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(lines[1], r"^Updated: (January|February|March|April|May|June|July|"
                                    r"August|September|October|November|December) \d{1,2}, \d{4}$")
 
+    def test_hardcoded_updated_dates_match_the_skill_header(self):
+        header_date = re.search(r"^Updated: (.+)$", self.body, re.M).group(1)
+        hardcoded = set(re.findall(r"Updated: ((?:January|February|March|April|May|June|"
+                                   r"July|August|September|October|November|December) "
+                                   r"\d{1,2}, \d{4})", self.body))
+        self.assertEqual(hardcoded, {header_date})
+
     def test_freshness_banner_is_the_first_response_line_before_mode_or_target(self):
         first = self.section("First Response Line")
         self.assertEqual(self.order[0], "First Response Line")
@@ -489,10 +499,254 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_target_identification_precedes_mode_selection(self):
         self.assertLess(self.order.index("Identify the Target"), self.order.index("Choose the Mode"))
         target = self.section("Identify the Target")
-        self.assertRegex(target, r"Repository file, plan, or change: [^\n]*commit SHA")
-        self.assertRegex(target, r"Pull request: [^\n]*URL[^\n]*head commit SHA")
+        self.assertRegex(
+            re.sub(r"\s+", " ", target),
+            r"Repository file, plan, or change: .*repository-relative"
+            r".*(?:commit SHA|immutable revision)",
+        )
+        self.assertRegex(target, r"(?i)uncommitted|mutable")
+        self.assertRegex(target, r"(?i)(?:content|diff) hash")
+        self.assertRegex(
+            target,
+            r"Pull request: [^\n]*URL[^\n]*(?:base and head commit SHAs|immutable diff hash)",
+        )
+        self.assertRegex(
+            target,
+            r"Comment, thread, or web document: [^\n]*URL"
+            r"[^\n]*(?:immutable revision|content hash|snapshot hash)",
+        )
         self.assertRegex(target, r"Pasted text that is not in a file: [^\n]*quotes")
+        normalized_target = re.sub(r"\s+", " ", target)
+        self.assertRegex(
+            normalized_target,
+            r"(?i)`sha256:<64 lowercase hex>`.*line endings.*LF"
+            r".*UTF-8.*without BOM.*no whitespace trimming",
+        )
+        self.assertRegex(
+            normalized_target,
+            r"(?i)binary.*raw bytes|raw bytes.*binary",
+        )
         self.assertIn("ask before you launch reviewers", target)
+
+    def test_review_intensity_is_one_public_control_with_auto_default(self):
+        intensity = self.section("Review Intensity")
+        self.assertLess(self.order.index("Identify the Target"),
+                        self.order.index("Review Intensity"))
+        self.assertLess(self.order.index("Review Intensity"),
+                        self.order.index("Choose the Mode"))
+        self.assertIn("`low | auto | max`", intensity)
+        self.assertRegex(intensity, r"(?i)`auto` is the default")
+        self.assertRegex(intensity, r"(?i)low[^\n]*at most one new reviewer")
+        self.assertRegex(intensity, r"(?i)max[^\n]*fresh three-reviewer")
+        self.assertNotRegex(intensity, r"`medium`|`high`")
+
+    def test_public_description_covers_reuse_and_non_consensus_paths(self):
+        self.assertRegex(self.description, r"(?i)reusing compatible prior coverage")
+        self.assertRegex(
+            self.description,
+            r"(?i)up to three (?:separated )?first-pass"
+            r"(?: separated)? adversarial reviewer perspectives",
+        )
+        self.assertRegex(self.description, r"(?i)without claiming consensus when none ran")
+
+    def test_prior_review_reuse_precedes_capability_selection(self):
+        self.assertLess(self.order.index("Choose the Mode"),
+                        self.order.index("Prior Review Check"))
+        self.assertLess(self.order.index("Prior Review Check"),
+                        self.order.index("Capability Check"))
+        prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
+        self.assertRegex(prior, r"(?i)available session history")
+        self.assertRegex(prior, r"(?i)exact target")
+        self.assertRegex(
+            prior,
+            r"(?i)target locator.*immutable revision|immutable revision.*target locator",
+        )
+        self.assertRegex(prior, r"(?i)mutable target.*(?:content|diff) hash")
+        self.assertRegex(
+            prior,
+            r"(?i)pull request.*full URL.*(?:base and head commit SHAs|immutable diff hash)",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)(?:comment|thread|web document).*URL"
+            r".*(?:immutable revision|content hash|snapshot hash)",
+        )
+        self.assertRegex(prior, r"(?i)reuse.*same immutable identity")
+        self.assertRegex(
+            prior,
+            r"(?i)cover.*current request.*scope.*constraints",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)scope.*partially covered.*uncovered work"
+            r".*selected intensity",
+        )
+        self.assertRegex(prior, r"(?i)review only the delta")
+        self.assertRegex(prior, r"(?i)`max`[^\n]*bypass")
+        self.assertRegex(prior, r"(?i)mode-compatible")
+        self.assertRegex(prior, r"(?i)forces a different mode[^\n]*forced-mode work")
+
+    def test_auto_reuse_requires_completed_challenge_coverage(self):
+        prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
+        self.assertRegex(
+            prior,
+            r"(?i)`auto`.*exact-target.*challenge coverage",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)completed challenge round.*capability order"
+            r".*qualifying coverage",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)material disagreement|suspected overstatement",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)groupthink.*unverified shared assumption",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)not.*`reused-review`.*one fresh challenge reviewer",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)challenge coverage.*incomplete.*do not resume"
+            r".*prior reviewer.*one fresh challenge reviewer",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)`single-subagent`.*current-run.*Reviewers.*1",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)fresh challenge reviewer.*unavailable"
+            r".*`single-agent`.*self-challenge",
+        )
+        for mode in ("SPAR Mode", "Rubber Duck Mode"):
+            section = re.sub(r"\s+", " ", self.section(mode))
+            self.assertRegex(
+                section,
+                r"(?i)challenge coverage incomplete.*prior (?:evidence|findings)"
+                r".*independent challenge pass.*not.*first-pass",
+            )
+        spar = re.sub(r"\s+", " ", self.section("SPAR Mode"))
+        self.assertRegex(
+            spar,
+            r"(?i)challenge coverage incomplete.*do not select fresh role"
+            r".*prior role set.*challenge context",
+        )
+
+    def test_common_mistake_does_not_bypass_auto_challenge_coverage(self):
+        mistakes = re.sub(r"\s+", " ", self.section("Common Mistakes"))
+        row = re.search(
+            r"Repeating an unchanged review.*?(?= \| [^|]+ \| [^|]+ \||$)",
+            mistakes,
+        ).group(0)
+
+        self.assertRegex(row, r"(?i)challenge coverage")
+        self.assertRegex(row, r"(?i)`max`")
+
+    def test_changelog_qualifies_reuse_by_intensity(self):
+        changelog = (ROOT / "CHANGELOG.md").read_text()
+        entry = re.search(
+            r"\*\*`adversarial-review`\*\*.*?(?=\n\n###|\n- \*\*`)",
+            changelog,
+            re.S,
+        ).group(0)
+        entry = re.sub(r"\s+", " ", entry)
+
+        self.assertRegex(entry, r"(?i)`low`.*`auto`.*reuse")
+        self.assertRegex(entry, r"(?i)`max`.*bypass.*fresh")
+        self.assertRegex(entry, r"(?i)qualifying.*delta baseline.*review.*delta")
+
+    def test_readme_qualifies_cross_examination_by_intensity(self):
+        readme = (ROOT / "README.md").read_text()
+        row = next(
+            line for line in readme.splitlines()
+            if line.startswith("| [`adversarial-review`]")
+        )
+
+        self.assertRegex(
+            row,
+            r"(?i)at `max`.*at `auto` when.*(?:material disagreement"
+            r"|suspected overstatement).*challenge",
+        )
+        self.assertRegex(
+            row,
+            r"(?i)cross-examin.*follow-up.*fallback",
+        )
+
+    def test_changelog_qualifies_cross_examination_fallbacks(self):
+        changelog = (ROOT / "CHANGELOG.md").read_text()
+        entry = re.search(
+            r"\*\*`adversarial-review`\*\*.*?(?=\n\n###|\n- \*\*`)",
+            changelog,
+            re.S,
+        ).group(0)
+        entry = re.sub(r"\s+", " ", entry)
+
+        self.assertRegex(
+            entry,
+            r"(?i)challenge.*disagreement.*cross-examination.*available"
+            r".*fallback",
+        )
+
+    def test_exact_target_reuse_has_a_zero_reviewer_execution_path(self):
+        capability = re.sub(r"\s+", " ", self.section("Capability Check"))
+        self.assertIn("`reused-review`", capability)
+        self.assertRegex(capability, r"(?i)qualifying exact-target reuse.*zero new reviewers")
+        self.assertRegex(capability, r"(?i)current-run.*Reviewers.*0")
+        self.assertRegex(
+            capability,
+            r"(?i)prior (?:panel|reviewers).*evidence.*reused",
+        )
+        self.assertRegex(
+            capability,
+            r"(?i)not.*newly performed consensus|do not.*newly performed consensus",
+        )
+        for mode in ("SPAR Mode", "Rubber Duck Mode"):
+            section = re.sub(r"\s+", " ", self.section(mode))
+            self.assertRegex(section, r"(?i)`reused-review`")
+            self.assertRegex(section, r"(?i)prior (?:role perspectives|findings)")
+            self.assertRegex(section, r"(?i)do not (?:create|run|launch).*new")
+
+    def test_capability_check_records_reviewer_follow_up_support(self):
+        capability = re.sub(r"\s+", " ", self.section("Capability Check"))
+        self.assertRegex(
+            capability,
+            r"(?i)(?:follow-up|resume) capability",
+        )
+        self.assertRegex(
+            capability,
+            r"(?i)one-shot",
+        )
+
+    def test_intensity_history_scenario_guarantees_reviewer_follow_up(self):
+        scenarios = json.loads((ROOT / "tests" / "skill_scenarios.json").read_text())
+        scenario = next(
+            item for item in scenarios["scenarios"]
+            if item["id"] == "adversarial-intensity-and-history"
+        )
+
+        self.assertRegex(scenario["input"], r"(?i)(?:follow-up|resume)")
+
+    def test_changed_target_uses_prior_revision_only_as_delta_baseline(self):
+        prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
+        self.assertRegex(prior, r"(?i)exact-target reuse")
+        self.assertRegex(prior, r"(?i)prior immutable revision")
+        self.assertRegex(prior, r"(?i)same logical target")
+        self.assertRegex(prior, r"(?i)both (?:the )?current and prior revisions.*accessible")
+        self.assertRegex(prior, r"(?i)mode-compatible")
+        self.assertRegex(prior, r"(?i)only as (?:a )?delta baseline")
+
+    def test_mode_is_automatic_unless_user_explicitly_forces_it(self):
+        mode = self.section("Choose the Mode")
+        self.assertRegex(mode, r"(?i)desired output")
+        self.assertIn("force SPAR", mode)
+        self.assertIn("force Rubber Duck", mode)
+        self.assertRegex(mode, r"(?i)explicit.*override")
+        self.assertRegex(mode, r"(?i)review, critique, or audit")
 
     def test_reviewer_guard_is_defined_and_required_in_both_modes(self):
         guard = self.section("Reviewer Guard")
@@ -510,18 +764,267 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_spar_handles_the_single_subagent_path(self):
         self.assertIn("`single-subagent`", self.section("SPAR Mode"))
 
+    def test_spar_retains_reused_roles_or_selects_fresh_roles_within_the_context_cap(self):
+        spar = re.sub(r"\s+", " ", self.section("SPAR Mode"))
+        self.assertRegex(
+            spar,
+            r"(?i)`reused-review`.*retain.*prior review.*role set",
+        )
+        self.assertRegex(
+            spar,
+            r"(?i)paths other than.*`reused-review`"
+            r".*`challenge coverage incomplete`.*pick 3-5 fresh roles",
+        )
+        self.assertRegex(
+            spar,
+            r"(?i)one primary role per selected independent (?:reviewer )?context",
+        )
+        self.assertRegex(spar, r"(?i)at most three first-pass reviewer contexts")
+        self.assertRegex(
+            spar,
+            r"(?i)(?:remaining|extra) fresh roles.*sequentially.*main synthesizer",
+        )
+        self.assertRegex(spar, r"(?i)disclose.*simulated roles")
+        self.assertRegex(
+            spar,
+            r"(?i)synthesize only after every selected or retained role has a perspective",
+        )
+
     def test_reviewers_use_rubber_duck_agent_type_with_disclosed_fallback(self):
         dispatch = self.section("Rubber Duck Mode") + self.section("SPAR Mode")
         self.assertIn("agent_type: rubber-duck", dispatch)
         self.assertIn("rubber-duck unavailable", self.body)
 
+    def test_rubber_duck_steps_are_sequentially_numbered(self):
+        numbers = [
+            int(match)
+            for match in re.findall(r"(?m)^(\d+)\. ", self.section("Rubber Duck Mode"))
+        ]
+        self.assertEqual(numbers, list(range(1, len(numbers) + 1)))
+
     def test_disclosure_names_path_with_updated_date_and_one_premortem_sentence(self):
         disclose = self.section("Always Disclose")
         self.assertRegex(disclose, r"Execution path: <[^>]+> \(adversarial-review, Updated: <date>\)")
+        self.assertIn("Review intensity: <low | auto | max>", disclose)
+        self.assertIn("Prior review:", disclose)
         self.assertRegex(disclose, r"Premortem: <one sentence")
         block = re.search(r"```text\n(.*?)```", disclose, re.S).group(1)
         self.assertNotIn("Target:", block, "Target is written once, before mode selection")
-        self.assertIn("after the reviewers return", disclose)
+        self.assertIn("after the review completes", disclose)
+        outcomes = re.search(
+            r"Use one of these concise prior-review outcomes:\n(.*?)\n\n",
+            disclose,
+            re.S,
+        ).group(1)
+        self.assertIn("`delta baseline found`", outcomes)
+        self.assertIn("`challenge coverage incomplete`", outcomes)
+        self.assertNotIn("`reviewed delta`", outcomes)
+        self.assertRegex(
+            disclose,
+            r"(?is)delta (?:path|baseline).*pre-launch"
+            r".*delta (?:was )?reviewed.*only after.*complet",
+        )
+
+    def test_example_target_includes_deterministic_content_hash(self):
+        example = self.section("Example")
+        self.assertIn(
+            "Target: plan text \"cache all GET responses in memory for 10 minutes\" "
+            "sha256:c34a787626741d4c17aba7a421f9e45fda204450e49509c76754dc99b980fcca",
+            example,
+        )
+
+    def test_cross_examination_calibrates_overstatement_and_disagreement(self):
+        cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
+        self.assertRegex(
+            cross,
+            r"(?i)Rubber Duck.*existence.*scope.*severity.*recommended action",
+        )
+        for outcome in ("uphold", "narrow", "downgrade", "withdraw"):
+            self.assertIn(outcome, cross.lower())
+        self.assertRegex(
+            cross,
+            r"(?i)SPAR.*objections.*support.*assumptions.*tradeoffs.*failure modes",
+        )
+        for outcome in ("stands", "narrows", "rebutted", "unresolved tradeoff",
+                        "unresolved assumption"):
+            self.assertIn(outcome, cross.lower())
+        self.assertRegex(
+            cross,
+            r"(?i)`auto`.*material disagreement.*suspected overstatement.*either mode",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`max`.*critical or high Rubber Duck finding"
+            r".*material SPAR claim.*verdict or recommendation.*every disagreement",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`max`.*always run a challenge round",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)(?:if|when) (?:those|these) sets are empty"
+            r".*highest-impact remaining Rubber Duck finding"
+            r".*strongest decision-relevant SPAR claim",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`max`.*always run a groupthink assumption check"
+            r".*shared assumption.*panel wrong",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)`auto`.*groupthink check"
+            r".*agreement rests on an unverified shared assumption",
+        )
+        self.assertRegex(cross, r"(?i)synthesizer decides.*does not add votes")
+        judge = re.sub(r"\s+", " ", self.section("Judge/Synthesizer Rules"))
+        self.assertRegex(judge, r"(?i)actionable")
+        self.assertRegex(judge, r"(?i)consensus.*signal")
+
+    def test_ranking_is_impact_first_and_examples_do_not_sort_by_reviewer_count(self):
+        self.assertNotIn("consensus-ranked", self.body.lower())
+        aggregation = re.sub(r"\s+", " ", self.section("Consensus Aggregation"))
+        self.assertRegex(
+            aggregation,
+            r"(?i)rank surviving findings by impact, actionability, confidence, "
+            r"and evidence quality",
+        )
+        self.assertRegex(
+            aggregation,
+            r"(?i)reviewer count.*prioritization signal and tie-breaker, not proof",
+        )
+        example = re.sub(r"\s+", " ", self.section("Example"))
+        self.assertRegex(
+            example,
+            r"(?i)rank by impact, actionability, confidence, and evidence quality"
+            r".*reviewer count only as a tie-breaker",
+        )
+        self.assertLess(example.index("found by 1 reviewer"),
+                        example.index("found by 3 reviewers"))
+
+    def test_reviewer_failure_keeps_impact_first_ranking(self):
+        failure = re.sub(r"\s+", " ", self.section("Reviewer Failure Handling"))
+        self.assertNotRegex(
+            failure,
+            r"(?i)rank consensus by completed reviewer count",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)rank surviving findings by impact, actionability, confidence, "
+            r"and evidence quality",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)completed reviewer count.*disclos.*(?:support|tie-breaker)",
+        )
+
+    def test_max_degrades_to_named_self_challenge_without_claiming_cross_examination(self):
+        intensity = re.sub(r"\s+", " ", self.section("Review Intensity"))
+        self.assertRegex(
+            intensity,
+            r"(?i)`max`.*fresh three-reviewer panel when available"
+            r".*mandatory challenge round.*groupthink assumption check",
+        )
+
+        cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
+        self.assertRegex(
+            cross,
+            r"(?i)at least one independent reviewer.*usable.*(?:follow-up|resume)"
+            r".*reviewer cross-examination",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)(?:cannot|cannot be|unable to) (?:resume|receive follow-up)"
+            r".*fresh challenge reviewer.*independent challenge pass",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)follow-up.*(?:fails|unusable)"
+            r".*continue.*independent challenge pass",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)fresh challenge reviewer.*(?:fails|unavailable|unusable)"
+            r".*self-challenge pass.*(?:highest-impact Rubber Duck finding"
+            r"|strongest decision-relevant SPAR claim)"
+            r".*assumption check",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)do not call.*self-challenge.*reviewer cross-examination",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)(?:usable independent first-pass reviews.*self-challenge"
+            r"|self-challenge.*usable independent first-pass reviews)"
+            r".*do not.*independent consensus unavailable",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)no usable independent first-pass reviews"
+            r".*independent consensus unavailable",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)groupthink assumption check.*shared assumption.*panel wrong"
+            r".*degraded self-challenge.*default assumption"
+            r".*single-agent critique wrong",
+        )
+
+        failure = re.sub(r"\s+", " ", self.section("Reviewer Failure Handling"))
+        self.assertRegex(
+            failure,
+            r"(?i)no reviewer returns usable findings.*`max`"
+            r".*degraded.*self-challenge",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)`challenge coverage incomplete`"
+            r".*fresh challenge reviewer.*(?:fails|unusable)"
+            r".*self-challenge.*prior evidence",
+        )
+        self.assertLess(
+            failure.index("`challenge coverage incomplete`"),
+            failure.index("Otherwise, fall back"),
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)otherwise.*fall back to `single-agent` critique",
+        )
+
+        disclose = re.sub(r"\s+", " ", self.section("Always Disclose"))
+        self.assertRegex(
+            disclose,
+            r"(?i)Challenge round: <reviewer cross-examination"
+            r" \| independent challenge pass \| self-challenge pass"
+            r" \| not required>",
+        )
+        self.assertIn("Priority ranking:", disclose)
+        self.assertNotIn("Consensus ranking:", disclose)
+        self.assertRegex(
+            disclose,
+            r"(?i)no usable independent first-pass reviews"
+            r".*independent consensus unavailable",
+        )
+        self.assertRegex(
+            disclose,
+            r"(?i)(?:usable independent first-pass reviews.*self-challenge"
+            r"|self-challenge.*usable independent first-pass reviews)"
+            r".*do not.*independent consensus unavailable",
+        )
+
+    def test_disclosure_example_matches_the_required_schema(self):
+        example = self.section("Example")
+        disclosure = re.search(
+            r"Disclosure example:\s*```text\n(.*?)\n```",
+            example,
+            re.S,
+        ).group(1)
+
+        self.assertIn("Challenge round:", disclosure)
+        self.assertIn("Priority ranking:", disclosure)
+        self.assertNotIn("Consensus ranking:", disclosure)
 
     def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
