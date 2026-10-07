@@ -528,7 +528,7 @@ do not invent launches, reviewer participation, or consensus.
 | Treating consensus as proof | Consensus is a prioritization signal, not a guarantee |
 | Ignoring disagreement | Preserve contradictions and recommend a resolution path |
 | Treating reviewer count as proof | Cross-examine disagreement and rank surviving findings by evidence, impact, and actionability |
-| Repeating an unchanged review | Check exact-target history and reuse it unless `max` requests a fresh panel |
+| Repeating an unchanged review | Reuse exact-target history only when mode, intensity, and challenge coverage qualify; `max` requests a fresh panel |
 | Making users choose mode and rigor | Expose only `low | auto | max`; infer mode unless the user explicitly forces it |
 | Using LOC as risk proxy | Small auth, billing, deletion, or security-boundary changes can be critical |
 

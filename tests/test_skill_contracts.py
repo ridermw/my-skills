@@ -568,6 +568,16 @@ class AdversarialReviewContractTests(unittest.TestCase):
             r"(?i)not.*`reused-review`.*targeted fresh reviewer",
         )
 
+    def test_common_mistake_does_not_bypass_auto_challenge_coverage(self):
+        mistakes = re.sub(r"\s+", " ", self.section("Common Mistakes"))
+        row = re.search(
+            r"Repeating an unchanged review.*?(?= \| [^|]+ \| [^|]+ \||$)",
+            mistakes,
+        ).group(0)
+
+        self.assertRegex(row, r"(?i)challenge coverage")
+        self.assertRegex(row, r"(?i)`max`")
+
     def test_changelog_qualifies_reuse_by_intensity(self):
         changelog = (ROOT / "CHANGELOG.md").read_text()
         entry = re.search(
