@@ -41,7 +41,10 @@ For implementation plans, code changes, tests, debugging hypotheses, or critique
 
 Before you choose a mode, write one line: `Target: <exact target>`.
 
-- Repository file, plan, or change: repository-relative path or diff range at the commit SHA, or `uncommitted changes on <branch> at <HEAD SHA>`.
+- Repository file, plan, or change: repository-relative path or diff range plus
+  its commit SHA. For uncommitted or otherwise mutable content, include the same
+  repository-relative locator plus a content or diff hash; branch and `HEAD`
+  provide context but are not an immutable revision.
 - Pull request: full URL plus either the base and head commit SHAs or an
   immutable diff hash.
 - Comment, thread, or web document: full URL.
@@ -86,13 +89,14 @@ After selecting the mode and before selecting reviewers, perform two distinct
 searches in available session history:
 
 1. **Exact-target reuse.** Search for a completed adversarial review matching
-   the exact target by its immutable identity: commit SHA; for a pull request,
-   its full URL plus the base and head commit SHAs or an immutable diff hash;
-   content hash; or unchanged pasted text. Reuse must match that same immutable
-   identity. It qualifies as reusable coverage only when its evidence is still
-   accessible and its coverage is mode-compatible. A Rubber Duck review does
-   not substitute for SPAR role analysis, and SPAR does not substitute for a
-   Rubber Duck defect review.
+   the exact target by both its target locator and immutable revision:
+   repository-relative path or diff range plus commit SHA; for a pull request,
+   its full URL plus the base and head commit SHAs or an immutable diff hash; a
+   mutable target's locator plus content or diff hash; or unchanged pasted text.
+   Reuse must match that same immutable identity. It qualifies as reusable
+   coverage only when its evidence is still accessible and its coverage is
+   mode-compatible. A Rubber Duck review does not substitute for SPAR role
+   analysis, and SPAR does not substitute for a Rubber Duck defect review.
 2. **Delta-baseline discovery.** When the current target has changed, also
    search for a completed review of a prior immutable revision of the same
    logical target, such as the same pull request, file, or named artifact. It

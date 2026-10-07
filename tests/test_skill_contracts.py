@@ -498,7 +498,13 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_target_identification_precedes_mode_selection(self):
         self.assertLess(self.order.index("Identify the Target"), self.order.index("Choose the Mode"))
         target = self.section("Identify the Target")
-        self.assertRegex(target, r"Repository file, plan, or change: [^\n]*commit SHA")
+        self.assertRegex(
+            re.sub(r"\s+", " ", target),
+            r"Repository file, plan, or change: .*repository-relative"
+            r".*(?:commit SHA|immutable revision)",
+        )
+        self.assertRegex(target, r"(?i)uncommitted|mutable")
+        self.assertRegex(target, r"(?i)(?:content|diff) hash")
         self.assertRegex(
             target,
             r"Pull request: [^\n]*URL[^\n]*(?:base and head commit SHAs|immutable diff hash)",
@@ -531,7 +537,11 @@ class AdversarialReviewContractTests(unittest.TestCase):
         prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
         self.assertRegex(prior, r"(?i)available session history")
         self.assertRegex(prior, r"(?i)exact target")
-        self.assertRegex(prior, r"(?i)commit SHA|content hash")
+        self.assertRegex(
+            prior,
+            r"(?i)target locator.*immutable revision|immutable revision.*target locator",
+        )
+        self.assertRegex(prior, r"(?i)mutable target.*(?:content|diff) hash")
         self.assertRegex(
             prior,
             r"(?i)pull request.*full URL.*(?:base and head commit SHAs|immutable diff hash)",
@@ -541,6 +551,18 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(prior, r"(?i)`max`[^\n]*bypass")
         self.assertRegex(prior, r"(?i)mode-compatible")
         self.assertRegex(prior, r"(?i)forces a different mode[^\n]*forced-mode work")
+
+    def test_changelog_qualifies_reuse_by_intensity(self):
+        changelog = (ROOT / "CHANGELOG.md").read_text()
+        entry = re.search(
+            r"\*\*`adversarial-review`\*\*.*?(?=\n\n###|\n- \*\*`)",
+            changelog,
+            re.S,
+        ).group(0)
+        entry = re.sub(r"\s+", " ", entry)
+
+        self.assertRegex(entry, r"(?i)`low`.*`auto`.*reuse")
+        self.assertRegex(entry, r"(?i)`max`.*bypass.*fresh")
 
     def test_exact_target_reuse_has_a_zero_reviewer_execution_path(self):
         capability = re.sub(r"\s+", " ", self.section("Capability Check"))
