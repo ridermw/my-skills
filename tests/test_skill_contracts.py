@@ -793,6 +793,18 @@ class AdversarialReviewContractTests(unittest.TestCase):
             r"(?i)independent consensus unavailable",
         )
 
+    def test_disclosure_example_matches_the_required_schema(self):
+        example = self.section("Example")
+        disclosure = re.search(
+            r"Disclosure example:\s*```text\n(.*?)\n```",
+            example,
+            re.S,
+        ).group(1)
+
+        self.assertIn("Challenge round:", disclosure)
+        self.assertIn("Priority ranking:", disclosure)
+        self.assertNotIn("Consensus ranking:", disclosure)
+
     def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
         self.assertIn("Pass an explicit `model` for every reviewer", models)
