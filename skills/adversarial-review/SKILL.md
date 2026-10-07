@@ -475,7 +475,7 @@ Premortem: <one sentence that names the most damaging credible failure>
 
 Use one of these concise prior-review outcomes:
 `not found`, `reused exact target`, `delta baseline found`, `mode-incompatible`,
-`bypassed by max`, or `unavailable`.
+`challenge coverage incomplete`, `bypassed by max`, or `unavailable`.
 
 Pre-launch status reports only whether a qualifying delta baseline was found.
 Post-review execution details may say the delta was reviewed only after completion.

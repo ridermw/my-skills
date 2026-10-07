@@ -683,6 +683,7 @@ class AdversarialReviewContractTests(unittest.TestCase):
             re.S,
         ).group(1)
         self.assertIn("`delta baseline found`", outcomes)
+        self.assertIn("`challenge coverage incomplete`", outcomes)
         self.assertNotIn("`reviewed delta`", outcomes)
         self.assertRegex(
             disclose,
