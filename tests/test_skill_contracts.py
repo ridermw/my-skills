@@ -527,7 +527,11 @@ class AdversarialReviewContractTests(unittest.TestCase):
 
     def test_public_description_covers_reuse_and_non_consensus_paths(self):
         self.assertRegex(self.description, r"(?i)reusing compatible prior coverage")
-        self.assertRegex(self.description, r"(?i)up to three separated")
+        self.assertRegex(
+            self.description,
+            r"(?i)up to three (?:separated )?first-pass"
+            r"(?: separated)? adversarial reviewer perspectives",
+        )
         self.assertRegex(self.description, r"(?i)without claiming consensus when none ran")
 
     def test_prior_review_reuse_precedes_capability_selection(self):
