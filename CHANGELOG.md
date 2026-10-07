@@ -10,8 +10,9 @@ All notable changes to the skills in this repo.
   now check exact-target session history before launching reviewers. `low`
   reuses qualifying unchanged coverage; `auto` also requires any material
   disagreement or suspected overstatement to have completed challenge coverage,
-  otherwise it launches targeted fresh review. Changed targets review deltas
-  instead of repeating full panels; `max` bypasses reuse and runs a fresh panel.
+  otherwise it launches targeted fresh review. With a qualifying delta baseline,
+  changed targets review deltas instead of repeating full panels; `max` bypasses
+  reuse and runs a fresh panel.
   Mode is inferred from the desired output, with explicit force-mode syntax as
   an advanced escape hatch. Multi-reviewer synthesis cross-examines
   disagreement and overstatement, then ranks surviving findings by evidence,

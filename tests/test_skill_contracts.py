@@ -593,6 +593,19 @@ class AdversarialReviewContractTests(unittest.TestCase):
 
         self.assertRegex(entry, r"(?i)`low`.*`auto`.*reuse")
         self.assertRegex(entry, r"(?i)`max`.*bypass.*fresh")
+        self.assertRegex(entry, r"(?i)qualifying.*delta baseline.*review.*delta")
+
+    def test_readme_qualifies_cross_examination_by_intensity(self):
+        readme = (ROOT / "README.md").read_text()
+        row = next(
+            line for line in readme.splitlines()
+            if line.startswith("| [`adversarial-review`]")
+        )
+
+        self.assertRegex(
+            row,
+            r"(?i)(?:at|under) `auto` (?:and|or) `max`[^.]*cross-examin",
+        )
 
     def test_exact_target_reuse_has_a_zero_reviewer_execution_path(self):
         capability = re.sub(r"\s+", " ", self.section("Capability Check"))
