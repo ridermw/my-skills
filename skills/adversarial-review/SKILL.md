@@ -97,6 +97,11 @@ searches in available session history:
    coverage only when its evidence is still accessible and its coverage is
    mode-compatible. A Rubber Duck review does not substitute for SPAR role
    analysis, and SPAR does not substitute for a Rubber Duck defect review.
+   Under `auto`, exact-target reuse must also include the challenge coverage
+   required for any material disagreement or suspected overstatement. If those
+   claims remain unresolved, the prior review does not qualify for
+   `reused-review`; use its evidence as context and launch targeted fresh
+   reviewer coverage to challenge the unresolved claims before synthesis.
 2. **Delta-baseline discovery.** When the current target has changed, also
    search for a completed review of a prior immutable revision of the same
    logical target, such as the same pull request, file, or named artifact. It
@@ -132,7 +137,7 @@ that selection; excluded providers do not count.
 
 | Capability | Execution path |
 | --- | --- |
-| Qualifying exact-target reuse under the selected mode and intensity; zero new reviewers | `reused-review` |
+| Qualifying exact-target reuse, including required challenge coverage, under the selected mode and intensity; zero new reviewers | `reused-review` |
 | At least two selected reviewers on distinct eligible preferred providers with confirmed model overrides, plus an optional rule 9 reviewer | `multi-model-subagents` |
 | At least two selected independent contexts but distinct model control is unavailable or unconfirmed | `parallel-subagents` |
 | One selected critique/generic subagent | `single-subagent` |

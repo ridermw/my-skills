@@ -552,6 +552,21 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(prior, r"(?i)mode-compatible")
         self.assertRegex(prior, r"(?i)forces a different mode[^\n]*forced-mode work")
 
+    def test_auto_reuse_requires_completed_challenge_coverage(self):
+        prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
+        self.assertRegex(
+            prior,
+            r"(?i)`auto`.*exact-target.*challenge coverage",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)material disagreement|suspected overstatement",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)not.*`reused-review`.*targeted fresh reviewer",
+        )
+
     def test_changelog_qualifies_reuse_by_intensity(self):
         changelog = (ROOT / "CHANGELOG.md").read_text()
         entry = re.search(
