@@ -583,7 +583,21 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             prior,
-            r"(?i)not.*`reused-review`.*targeted fresh reviewer",
+            r"(?i)not.*`reused-review`.*one fresh challenge reviewer",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)challenge coverage.*incomplete.*do not resume"
+            r".*prior reviewer.*one fresh challenge reviewer",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)`single-subagent`.*current-run.*Reviewers.*1",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)fresh challenge reviewer.*unavailable"
+            r".*`single-agent`.*self-challenge",
         )
 
     def test_common_mistake_does_not_bypass_auto_challenge_coverage(self):

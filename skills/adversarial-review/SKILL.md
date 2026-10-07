@@ -107,8 +107,14 @@ searches in available session history:
    by the selected intensity: cross-examination for material disagreement or
    suspected overstatement, and a groupthink check when agreement rests on an
    unverified shared assumption. If required challenge coverage is incomplete,
-   the prior review does not qualify for `reused-review`; use its evidence as
-   context and launch targeted fresh reviewer coverage before synthesis.
+   the prior review does not qualify for `reused-review`. Do not resume prior
+   reviewer contexts; use the prior evidence as context and launch one
+   fresh challenge reviewer before synthesis. Use `single-subagent` and report
+   the current-run `Reviewers` count as 1. If a fresh challenge reviewer is
+   unavailable, use `single-agent`, run a self-challenge pass, and disclose the
+   fallback. This historical-coverage remediation is separate from the
+   Cross-Examination Round capability order for current-run first-pass
+   reviewers.
 2. **Delta-baseline discovery.** When the current target has changed, also
    search for a completed review of a prior immutable revision of the same
    logical target, such as the same pull request, file, or named artifact. It
