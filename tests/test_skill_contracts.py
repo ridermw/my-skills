@@ -510,6 +510,11 @@ class AdversarialReviewContractTests(unittest.TestCase):
             target,
             r"Pull request: [^\n]*URL[^\n]*(?:base and head commit SHAs|immutable diff hash)",
         )
+        self.assertRegex(
+            target,
+            r"Comment, thread, or web document: [^\n]*URL"
+            r"[^\n]*(?:immutable revision|content hash|snapshot hash)",
+        )
         self.assertRegex(target, r"Pasted text that is not in a file: [^\n]*quotes")
         self.assertIn("ask before you launch reviewers", target)
 
@@ -550,6 +555,11 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertRegex(
             prior,
             r"(?i)pull request.*full URL.*(?:base and head commit SHAs|immutable diff hash)",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)(?:comment|thread|web document).*URL"
+            r".*(?:immutable revision|content hash|snapshot hash)",
         )
         self.assertRegex(prior, r"(?i)reuse.*same immutable identity")
         self.assertRegex(prior, r"(?i)review only the delta")
@@ -856,6 +866,17 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             cross,
+            r"(?i)(?:usable independent first-pass reviews.*self-challenge"
+            r"|self-challenge.*usable independent first-pass reviews)"
+            r".*do not.*independent consensus unavailable",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)no usable independent first-pass reviews"
+            r".*independent consensus unavailable",
+        )
+        self.assertRegex(
+            cross,
             r"(?i)groupthink assumption check.*shared assumption.*panel wrong"
             r".*degraded self-challenge.*default assumption"
             r".*single-agent critique wrong",
@@ -883,7 +904,14 @@ class AdversarialReviewContractTests(unittest.TestCase):
         self.assertNotIn("Consensus ranking:", disclose)
         self.assertRegex(
             disclose,
-            r"(?i)independent consensus unavailable",
+            r"(?i)no usable independent first-pass reviews"
+            r".*independent consensus unavailable",
+        )
+        self.assertRegex(
+            disclose,
+            r"(?i)(?:usable independent first-pass reviews.*self-challenge"
+            r"|self-challenge.*usable independent first-pass reviews)"
+            r".*do not.*independent consensus unavailable",
         )
 
     def test_disclosure_example_matches_the_required_schema(self):

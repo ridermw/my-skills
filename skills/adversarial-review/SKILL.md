@@ -40,6 +40,8 @@ For implementation plans, code changes, tests, debugging hypotheses, or critique
 ## Identify the Target
 
 Before you choose a mode, write one line: `Target: <exact target>`.
+Every target identity combines a stable locator with an immutable revision or
+snapshot; a locator alone is not enough for exact-target reuse.
 
 - Repository file, plan, or change: repository-relative path or diff range plus
   its commit SHA. For uncommitted or otherwise mutable content, include the same
@@ -47,8 +49,10 @@ Before you choose a mode, write one line: `Target: <exact target>`.
   provide context but are not an immutable revision.
 - Pull request: full URL plus either the base and head commit SHAs or an
   immutable diff hash.
-- Comment, thread, or web document: full URL.
-- Pasted text that is not in a file: its first words in quotes.
+- Comment, thread, or web document: full URL plus an immutable revision,
+  content hash, or snapshot hash.
+- Pasted text that is not in a file: its first words in quotes plus a content
+  hash.
 
 If you cannot identify the exact target, or it differs from what the user named, ask before you launch reviewers. Give every reviewer the same target line.
 
@@ -92,7 +96,9 @@ searches in available session history:
    the exact target by both its target locator and immutable revision:
    repository-relative path or diff range plus commit SHA; for a pull request,
    its full URL plus the base and head commit SHAs or an immutable diff hash; a
-   mutable target's locator plus content or diff hash; or unchanged pasted text.
+   comment, thread, or web document's full URL plus immutable revision, content
+   hash, or snapshot hash; or another mutable target's locator plus content or
+   diff hash.
    Reuse must match that same immutable identity. It qualifies as reusable
    coverage only when its evidence is still accessible and its coverage is
    mode-compatible. A Rubber Duck review does not substitute for SPAR role
@@ -433,9 +439,11 @@ finding or strongest decision-relevant SPAR claim so the round cannot be
 skipped.
 
 Do not call an independent challenge pass or self-challenge pass reviewer
-cross-examination. Disclose when true reviewer cross-examination was
-unavailable and, for self-challenge, that independent challenge and consensus
-were unavailable.
+cross-examination. When self-challenge follows usable independent first-pass
+reviews, disclose that reviewer cross-examination and an independent challenge
+pass were unavailable; do not say `independent consensus unavailable`. When no
+usable independent first-pass reviews exist, say
+`independent consensus unavailable`.
 
 Under `max`, always run a groupthink assumption check. With usable independent
 reviews, identify a shared assumption that could make the panel wrong,
@@ -496,9 +504,12 @@ Post-review execution details may say the delta was reviewed only after completi
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
 
-When degraded max behavior uses a self-challenge pass, disclose `independent
-consensus unavailable` and that true reviewer cross-examination was unavailable;
-do not invent launches, reviewer participation, or consensus.
+When max uses a self-challenge pass after usable independent first-pass reviews,
+disclose that true reviewer cross-examination and an independent challenge pass
+were unavailable; do not say `independent consensus unavailable`. When no
+usable independent first-pass reviews exist, disclose
+`independent consensus unavailable`. Do not invent launches, reviewer
+participation, or consensus.
 
 ## Portability Fallbacks
 
