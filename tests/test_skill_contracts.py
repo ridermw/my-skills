@@ -1,5 +1,6 @@
 """Exercise the shipped shell examples against isolated, local-only fixtures."""
 
+import json
 import os
 from pathlib import Path
 import re
@@ -608,6 +609,15 @@ class AdversarialReviewContractTests(unittest.TestCase):
             capability,
             r"(?i)one-shot",
         )
+
+    def test_intensity_history_scenario_guarantees_reviewer_follow_up(self):
+        scenarios = json.loads((ROOT / "tests" / "skill_scenarios.json").read_text())
+        scenario = next(
+            item for item in scenarios["scenarios"]
+            if item["id"] == "adversarial-intensity-and-history"
+        )
+
+        self.assertRegex(scenario["input"], r"(?i)(?:follow-up|resume)")
 
     def test_changed_target_uses_prior_revision_only_as_delta_baseline(self):
         prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
