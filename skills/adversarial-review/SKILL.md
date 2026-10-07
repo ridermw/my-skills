@@ -107,8 +107,12 @@ searches in available session history:
    diff hash.
    Reuse must match that same immutable identity. It qualifies as reusable
    coverage only when its evidence is still accessible and its coverage is
-   mode-compatible. A Rubber Duck review does not substitute for SPAR role
-   analysis, and SPAR does not substitute for a Rubber Duck defect review.
+   mode-compatible and covers the current request's scope and constraints. A
+   Rubber Duck review does not substitute for SPAR role analysis, and SPAR does
+   not substitute for a Rubber Duck defect review. If the exact target matches
+   but its scope is only partially covered, use the prior evidence as context
+   and route the uncovered work through the selected intensity; do not use
+   `reused-review`.
    Under `auto`, exact-target reuse must include all challenge coverage required
    by the selected intensity. A completed challenge round through the
    Cross-Examination Round capability order is qualifying coverage whether it
@@ -452,10 +456,13 @@ Challenge fields and outcomes depend on the review mode:
 When a challenge round is required, use this capability order:
 
 1. When at least one independent reviewer returns usable work and supports a
-   follow-up turn or resume, use reviewer cross-examination.
+   follow-up turn or resume, attempt reviewer cross-examination. If that
+   follow-up fails or returns unusable challenge work, continue to the
+   independent challenge pass in step 2.
 2. When the original reviewers cannot receive follow-up or resume, launch one
-   fresh challenge reviewer with the normalized first-pass findings. Call this
-   an `independent challenge pass`, not reviewer cross-examination.
+   fresh challenge reviewer with the normalized first-pass findings. Also use
+   this step after a failed or unusable follow-up attempt. Call this an
+   `independent challenge pass`, not reviewer cross-examination.
 3. When the fresh challenge reviewer is unavailable, fails, or returns unusable
    work, run a `self-challenge pass` against the highest-impact Rubber Duck
    finding or strongest decision-relevant SPAR claim, plus an assumption check.
@@ -497,8 +504,9 @@ If one or more reviewers fail:
   quality. Completed reviewer count must be disclosed as support and may be used
   at most as a tie-breaker, not as the ranking root or proof.
 - Do not invent missing reviewer findings.
-- If a required follow-up round cannot resume the original reviewers, use the
-  Cross-Examination Round capability order and disclose the fallback.
+- If a required follow-up round cannot resume the original reviewers, fails, or
+  returns unusable challenge work, continue through the Cross-Examination Round
+  capability order and disclose the fallback.
 - For `challenge coverage incomplete`, if the fresh challenge reviewer launches
   but fails or returns unusable work, run a self-challenge pass against the
   normalized prior evidence and missing challenge questions. Do not replace

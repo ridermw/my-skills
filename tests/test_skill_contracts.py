@@ -572,6 +572,15 @@ class AdversarialReviewContractTests(unittest.TestCase):
             r".*(?:immutable revision|content hash|snapshot hash)",
         )
         self.assertRegex(prior, r"(?i)reuse.*same immutable identity")
+        self.assertRegex(
+            prior,
+            r"(?i)cover.*current request.*scope.*constraints",
+        )
+        self.assertRegex(
+            prior,
+            r"(?i)scope.*partially covered.*uncovered work"
+            r".*selected intensity",
+        )
         self.assertRegex(prior, r"(?i)review only the delta")
         self.assertRegex(prior, r"(?i)`max`[^\n]*bypass")
         self.assertRegex(prior, r"(?i)mode-compatible")
@@ -928,6 +937,11 @@ class AdversarialReviewContractTests(unittest.TestCase):
             cross,
             r"(?i)(?:cannot|cannot be|unable to) (?:resume|receive follow-up)"
             r".*fresh challenge reviewer.*independent challenge pass",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)follow-up.*(?:fails|unusable)"
+            r".*continue.*independent challenge pass",
         )
         self.assertRegex(
             cross,
