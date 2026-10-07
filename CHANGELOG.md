@@ -14,9 +14,11 @@ All notable changes to the skills in this repo.
   changed targets review deltas instead of repeating full panels; `max` bypasses
   reuse and runs a fresh panel.
   Mode is inferred from the desired output, with explicit force-mode syntax as
-  an advanced escape hatch. Multi-reviewer synthesis cross-examines
-  disagreement and overstatement, then ranks surviving findings by evidence,
-  impact, and actionability rather than treating consensus as proof.
+  an advanced escape hatch. Multi-reviewer synthesis challenges disagreement
+  and overstatement through cross-examination when reviewer follow-up is
+  available, or a disclosed independent- or self-challenge fallback otherwise.
+  It then ranks surviving findings by evidence, impact, and actionability
+  rather than treating consensus as proof.
 
 ### Fixed
 - **`ado-pr-build-monitor`** — every poll now refreshes PR revisions and current

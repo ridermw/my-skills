@@ -599,6 +599,13 @@ class AdversarialReviewContractTests(unittest.TestCase):
             r"(?i)fresh challenge reviewer.*unavailable"
             r".*`single-agent`.*self-challenge",
         )
+        for mode in ("SPAR Mode", "Rubber Duck Mode"):
+            section = re.sub(r"\s+", " ", self.section(mode))
+            self.assertRegex(
+                section,
+                r"(?i)challenge coverage incomplete.*prior (?:evidence|findings)"
+                r".*independent challenge pass.*not.*first-pass",
+            )
 
     def test_common_mistake_does_not_bypass_auto_challenge_coverage(self):
         mistakes = re.sub(r"\s+", " ", self.section("Common Mistakes"))
@@ -632,7 +639,26 @@ class AdversarialReviewContractTests(unittest.TestCase):
 
         self.assertRegex(
             row,
-            r"(?i)(?:at|under) `auto` (?:and|or) `max`[^.]*cross-examin",
+            r"(?i)(?:at|under) `auto` (?:and|or) `max`[^.]*challenge",
+        )
+        self.assertRegex(
+            row,
+            r"(?i)cross-examin.*follow-up.*fallback",
+        )
+
+    def test_changelog_qualifies_cross_examination_fallbacks(self):
+        changelog = (ROOT / "CHANGELOG.md").read_text()
+        entry = re.search(
+            r"\*\*`adversarial-review`\*\*.*?(?=\n\n###|\n- \*\*`)",
+            changelog,
+            re.S,
+        ).group(0)
+        entry = re.sub(r"\s+", " ", entry)
+
+        self.assertRegex(
+            entry,
+            r"(?i)challenge.*disagreement.*cross-examination.*available"
+            r".*fallback",
         )
 
     def test_exact_target_reuse_has_a_zero_reviewer_execution_path(self):

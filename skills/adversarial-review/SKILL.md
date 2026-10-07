@@ -109,9 +109,12 @@ searches in available session history:
    unverified shared assumption. If required challenge coverage is incomplete,
    the prior review does not qualify for `reused-review`. Do not resume prior
    reviewer contexts; use the prior evidence as context and launch one
-   fresh challenge reviewer before synthesis. Use `single-subagent` and report
-   the current-run `Reviewers` count as 1. If a fresh challenge reviewer is
-   unavailable, use `single-agent`, run a self-challenge pass, and disclose the
+   fresh challenge reviewer before synthesis. Supply the normalized prior
+   findings and the missing challenge questions, and call the result an
+   `independent challenge pass`, not a new first-pass review. Use
+   `single-subagent` and report the current-run `Reviewers` count as 1. If a
+   fresh challenge reviewer is unavailable, use `single-agent`, run a
+   self-challenge pass against the same prior evidence, and disclose the
    fallback. This historical-coverage remediation is separate from the
    Cross-Examination Round capability order for current-run first-pass
    reviewers.
@@ -297,10 +300,15 @@ Do not send identical persona instructions to all reviewers unless the user expl
 
 1. State: `Mode: SPAR`.
 2. Frame the core tension in one sentence.
-3. For `reused-review`, retain and report the accessible prior review's role
+3. For `challenge coverage incomplete`, give the fresh challenge reviewer the
+   normalized prior evidence, including the retained role claims and the
+   missing challenge questions. Run an `independent challenge pass`, not a
+   first-pass role review. If no fresh challenge reviewer is available, run a
+   self-challenge pass against the same prior evidence.
+4. For `reused-review`, retain and report the accessible prior review's role
    set. For all other paths, pick 3-5 fresh roles with genuinely conflicting
    incentives.
-4. For fresh review, assign one primary role per selected independent reviewer
+5. For fresh review, assign one primary role per selected independent reviewer
    context, up to the cap of at most three first-pass reviewer contexts, and
    dispatch those roles in parallel with `agent_type: rubber-duck`. Start each
    prompt with the reviewer guard, then the target line. Cover extra fresh roles
@@ -310,9 +318,9 @@ Do not send identical persona instructions to all reviewers unless the user expl
    sequentially. For `reused-review`, use the accessible prior role perspectives
    for the retained roles and do not create new role perspectives. Disclose
    simulated roles and reused roles.
-5. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
-6. Synthesize only after every selected or retained role has a perspective.
-7. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
+6. For each role, give the strongest objection, strongest support, hidden assumption, and failure mode.
+7. Synthesize only after every selected or retained role has a perspective.
+8. End with the single most important open question. If decision-blocking information is genuinely missing, end with up to three such questions instead — but do not pad to more than one when one suffices.
 
 Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open question(s).
 
@@ -320,17 +328,24 @@ Use sections: Conflict framing, Roles, Perspective [Role], Synthesis, Open quest
 
 1. State: `Mode: Rubber Duck`.
 2. Choose the execution path from Capability Check.
-3. Launch every reviewer with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the runtime has no `rubber-duck` agent, use a general critique subagent and disclose `rubber-duck unavailable`.
-4. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
-5. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
-6. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
-7. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
-8. For `reused-review`, report the accessible prior findings and do not run or
+3. For `challenge coverage incomplete`, give the fresh challenge reviewer the
+   normalized prior findings and missing challenge questions. Run an
+   `independent challenge pass`, not a first-pass critique. If no fresh
+   challenge reviewer is available, run a self-challenge pass against the same
+   prior evidence.
+4. Launch every reviewer with `agent_type: rubber-duck`. Start each prompt with the reviewer guard, then the target line. If the runtime has no `rubber-duck` agent, use a general critique subagent and disclose `rubber-duck unavailable`.
+5. For `multi-model-subagents`, launch the selected reviewer roster in parallel with its chosen models, effort settings, and distinct Adversarial Reviewer Lenses.
+6. For `parallel-subagents`, launch the selected number of independent critique subagents in parallel without claiming distinct model coverage.
+7. For `single-subagent`, launch one critique subagent and perform synthesis yourself; do not count the synthesizer as a second reviewer.
+8. For `single-agent`, perform the critique yourself and disclose that no subagent was launched.
+9. For `reused-review`, report the accessible prior findings and do not run or
    launch a new critique. Distinguish reused evidence from current synthesis.
-9. Each reviewer must receive the same critique target and must not see other reviewers' findings during the first pass.
-10. Each reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
-11. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
-12. Separate accepted findings from rejected or unverified concerns.
+10. Each first-pass reviewer must receive the same critique target and must not
+    see other reviewers' findings during the first pass. The historical
+    challenge branch in step 3 receives prior findings by design.
+11. Each first-pass reviewer runs the Premortem Pass, checks the Review Constitution, and returns findings in the Reviewer Output Schema.
+12. Focus only on high-signal issues: correctness, security, reliability, missing tests, bad assumptions, and edge cases.
+13. Separate accepted findings from rejected or unverified concerns.
 
 Use sections: Critique target, Execution disclosure, Priority-ranked findings,
 Single-reviewer findings worth considering, Recommended changes, Rejected or
