@@ -132,8 +132,11 @@ reused, what changed, and which new reviewers actually ran.
 Apply Review Intensity, Prior Review Check, and Proportionality first. For work
 warranting new subagents, select the eligible reviewer roster using the Model
 Diversity Heuristic and available independent contexts. Record the roster and
-count (at most three), then derive the execution path below. Dispatch reuses
-that selection; excluded providers do not count.
+count (at most three), then derive the execution path below. Also record each
+reviewer context's follow-up or resume capability; a one-shot reviewer can
+provide usable first-pass work but cannot participate in reviewer
+cross-examination. Dispatch reuses that selection; excluded providers do not
+count.
 
 | Capability | Execution path |
 | --- | --- |
@@ -407,23 +410,32 @@ Challenge fields and outcomes depend on the review mode:
   each claim stands, narrows, is rebutted, or exposes an unresolved tradeoff or
   unresolved assumption, and explain the evidence.
 
-Under `auto`, cross-examination is required for material disagreement or
+When a challenge round is required, use this capability order:
+
+1. When at least one independent reviewer returns usable work and supports a
+   follow-up turn or resume, use reviewer cross-examination.
+2. When the original reviewers cannot receive follow-up or resume, launch one
+   fresh challenge reviewer with the normalized first-pass findings. Call this
+   an `independent challenge pass`, not reviewer cross-examination.
+3. When the fresh challenge reviewer is unavailable, fails, or returns unusable
+   work, run a `self-challenge pass` against the highest-impact Rubber Duck
+   finding or strongest decision-relevant SPAR claim, plus an assumption check.
+
+Under `auto`, a challenge round is required for material disagreement or
 suspected overstatement in either mode. Under `auto`, run a groupthink check
 when agreement rests on an unverified shared assumption.
 
-Under `max`, always run cross-examination when at least one independent reviewer
-returns usable work; this is reviewer cross-examination. Challenge every
-critical or high Rubber Duck finding, every material SPAR claim that could
-change the verdict or recommendation, and every disagreement. If those sets are
-empty, challenge the highest-impact remaining Rubber Duck finding or strongest
-decision-relevant SPAR claim so the round cannot be skipped.
+Under `max`, always run a challenge round through the capability order above.
+Challenge every critical or high Rubber Duck finding, every material SPAR claim
+that could change the verdict or recommendation, and every disagreement. If
+those sets are empty, challenge the highest-impact remaining Rubber Duck
+finding or strongest decision-relevant SPAR claim so the round cannot be
+skipped.
 
-Under `max`, when no independent reviewer exists or none returns usable
-findings, run a clearly named self-challenge pass against the highest-impact
-Rubber Duck finding or strongest decision-relevant claim in SPAR, plus an
-assumption check. Do not call the self-challenge pass reviewer
-cross-examination. Disclose that true reviewer cross-examination and independent
-consensus were unavailable.
+Do not call an independent challenge pass or self-challenge pass reviewer
+cross-examination. Disclose when true reviewer cross-examination was
+unavailable and, for self-challenge, that independent challenge and consensus
+were unavailable.
 
 Under `max`, always run a groupthink assumption check. With usable independent
 reviews, identify a shared assumption that could make the panel wrong,
@@ -444,6 +456,8 @@ If one or more reviewers fail:
   quality. Completed reviewer count must be disclosed as support and may be used
   at most as a tie-breaker, not as the ranking root or proof.
 - Do not invent missing reviewer findings.
+- If a required follow-up round cannot resume the original reviewers, use the
+  Cross-Examination Round capability order and disclose the fallback.
 - If no reviewer returns usable findings under `max`, fall back to
   `single-agent` critique, apply the degraded max self-challenge behavior, and
   disclose the fallback. Otherwise, fall back to `single-agent` critique and
@@ -468,7 +482,7 @@ write these lines. Keep each line to one sentence.
 ```text
 Execution path: <path> (adversarial-review, Updated: <date>)
 Reviewers: <launched count>; <agent type>; <model and effort for each, or model not changed / model diversity not confirmed>; three independent contexts <achieved | not achieved>
-Challenge round: <reviewer cross-examination | self-challenge pass | not required>
+Challenge round: <reviewer cross-examination | independent challenge pass | self-challenge pass | not required>
 Priority ranking: <performed | not performed, with reason>
 Premortem: <one sentence that names the most damaging credible failure>
 ```

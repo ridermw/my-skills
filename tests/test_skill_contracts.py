@@ -598,6 +598,17 @@ class AdversarialReviewContractTests(unittest.TestCase):
             self.assertRegex(section, r"(?i)prior (?:role perspectives|findings)")
             self.assertRegex(section, r"(?i)do not (?:create|run|launch).*new")
 
+    def test_capability_check_records_reviewer_follow_up_support(self):
+        capability = re.sub(r"\s+", " ", self.section("Capability Check"))
+        self.assertRegex(
+            capability,
+            r"(?i)(?:follow-up|resume) capability",
+        )
+        self.assertRegex(
+            capability,
+            r"(?i)one-shot",
+        )
+
     def test_changed_target_uses_prior_revision_only_as_delta_baseline(self):
         prior = re.sub(r"\s+", " ", self.section("Prior Review Check"))
         self.assertRegex(prior, r"(?i)exact-target reuse")
@@ -716,7 +727,7 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             cross,
-            r"(?i)`max`.*always run cross-examination",
+            r"(?i)`max`.*always run a challenge round",
         )
         self.assertRegex(
             cross,
@@ -787,13 +798,19 @@ class AdversarialReviewContractTests(unittest.TestCase):
         cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
         self.assertRegex(
             cross,
-            r"(?i)at least one independent reviewer.*usable"
+            r"(?i)at least one independent reviewer.*usable.*(?:follow-up|resume)"
             r".*reviewer cross-examination",
         )
         self.assertRegex(
             cross,
-            r"(?i)no independent reviewer.*usable"
-            r".*self-challenge pass.*highest-impact.*decision-relevant claim"
+            r"(?i)(?:cannot|cannot be|unable to) (?:resume|receive follow-up)"
+            r".*fresh challenge reviewer.*independent challenge pass",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)fresh challenge reviewer.*(?:fails|unavailable|unusable)"
+            r".*self-challenge pass.*(?:highest-impact Rubber Duck finding"
+            r"|strongest decision-relevant SPAR claim)"
             r".*assumption check",
         )
         self.assertRegex(
@@ -821,7 +838,8 @@ class AdversarialReviewContractTests(unittest.TestCase):
         disclose = re.sub(r"\s+", " ", self.section("Always Disclose"))
         self.assertRegex(
             disclose,
-            r"(?i)Challenge round: <reviewer cross-examination \| self-challenge pass"
+            r"(?i)Challenge round: <reviewer cross-examination"
+            r" \| independent challenge pass \| self-challenge pass"
             r" \| not required>",
         )
         self.assertIn("Priority ranking:", disclose)
