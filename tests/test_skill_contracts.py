@@ -688,7 +688,7 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertRegex(
             cross,
-            r"(?i)`max`.*always run a groupthink check"
+            r"(?i)`max`.*always run a groupthink assumption check"
             r".*shared assumption.*panel wrong",
         )
         self.assertRegex(
@@ -721,6 +721,77 @@ class AdversarialReviewContractTests(unittest.TestCase):
         )
         self.assertLess(example.index("found by 1 reviewer"),
                         example.index("found by 3 reviewers"))
+
+    def test_reviewer_failure_keeps_impact_first_ranking(self):
+        failure = re.sub(r"\s+", " ", self.section("Reviewer Failure Handling"))
+        self.assertNotRegex(
+            failure,
+            r"(?i)rank consensus by completed reviewer count",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)rank surviving findings by impact, actionability, confidence, "
+            r"and evidence quality",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)completed reviewer count.*disclos.*(?:support|tie-breaker)",
+        )
+
+    def test_max_degrades_to_named_self_challenge_without_claiming_cross_examination(self):
+        intensity = re.sub(r"\s+", " ", self.section("Review Intensity"))
+        self.assertRegex(
+            intensity,
+            r"(?i)`max`.*fresh three-reviewer panel when available"
+            r".*mandatory challenge round.*groupthink assumption check",
+        )
+
+        cross = re.sub(r"\s+", " ", self.section("Cross-Examination Round"))
+        self.assertRegex(
+            cross,
+            r"(?i)at least one independent reviewer.*usable"
+            r".*reviewer cross-examination",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)no independent reviewer.*usable"
+            r".*self-challenge pass.*highest-impact.*decision-relevant claim"
+            r".*assumption check",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)do not call.*self-challenge.*reviewer cross-examination",
+        )
+        self.assertRegex(
+            cross,
+            r"(?i)groupthink assumption check.*shared assumption.*panel wrong"
+            r".*degraded self-challenge.*default assumption"
+            r".*single-agent critique wrong",
+        )
+
+        failure = re.sub(r"\s+", " ", self.section("Reviewer Failure Handling"))
+        self.assertRegex(
+            failure,
+            r"(?i)no reviewer returns usable findings.*`max`"
+            r".*degraded.*self-challenge",
+        )
+        self.assertRegex(
+            failure,
+            r"(?i)otherwise.*fall back to `single-agent` critique",
+        )
+
+        disclose = re.sub(r"\s+", " ", self.section("Always Disclose"))
+        self.assertRegex(
+            disclose,
+            r"(?i)Challenge round: <reviewer cross-examination \| self-challenge pass"
+            r" \| not required>",
+        )
+        self.assertIn("Priority ranking:", disclose)
+        self.assertNotIn("Consensus ranking:", disclose)
+        self.assertRegex(
+            disclose,
+            r"(?i)independent consensus unavailable",
+        )
 
     def test_each_reviewer_gets_an_explicit_model_and_the_started_model_is_checked(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))

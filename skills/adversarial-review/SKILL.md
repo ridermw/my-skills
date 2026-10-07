@@ -59,7 +59,7 @@ natural forms such as `/adversarial-review low: ...` and
 | --- | --- |
 | `low` | Reuse a qualifying prior review when possible. Otherwise use `single-agent` or at most one new reviewer. Do not claim consensus. |
 | `auto` | Reuse exact-target coverage, review only changed or uncovered areas, and apply Proportionality. For substantive uncovered work, target three reviewers and cross-examine meaningful disagreement. |
-| `max` | Bypass prior-review reuse as a substitute for fresh criticism. Run a fresh three-reviewer panel when available, mandatory cross-examination, and a groupthink check. `max` never means more than three first-pass reviewers. |
+| `max` | Bypass prior-review reuse as a substitute for fresh criticism. Run a fresh three-reviewer panel when available and require a mandatory challenge round plus a groupthink assumption check. `max` never means more than three first-pass reviewers. |
 
 Intensity controls review investment, not mode. If the user does not name an
 intensity, resolve it to `auto`; never silently upgrade or downgrade an explicit
@@ -402,13 +402,24 @@ Under `auto`, cross-examination is required for material disagreement or
 suspected overstatement in either mode. Under `auto`, run a groupthink check
 when agreement rests on an unverified shared assumption.
 
-Under `max`, always run cross-examination. Challenge every critical or high
-Rubber Duck finding, every material SPAR claim that could change the verdict or
-recommendation, and every disagreement. If those sets are empty, challenge the
-highest-impact remaining Rubber Duck finding or strongest decision-relevant
-SPAR claim so the round cannot be skipped. Under `max`, always run a groupthink
-check that identifies a shared assumption that could make the panel wrong,
-regardless of how neat the agreement looks.
+Under `max`, always run cross-examination when at least one independent reviewer
+returns usable work; this is reviewer cross-examination. Challenge every
+critical or high Rubber Duck finding, every material SPAR claim that could
+change the verdict or recommendation, and every disagreement. If those sets are
+empty, challenge the highest-impact remaining Rubber Duck finding or strongest
+decision-relevant SPAR claim so the round cannot be skipped.
+
+Under `max`, when no independent reviewer exists or none returns usable
+findings, run a clearly named self-challenge pass against the highest-impact
+Rubber Duck finding or strongest decision-relevant claim in SPAR, plus an
+assumption check. Do not call the self-challenge pass reviewer
+cross-examination. Disclose that true reviewer cross-examination and independent
+consensus were unavailable.
+
+Under `max`, always run a groupthink assumption check. With usable independent
+reviews, identify a shared assumption that could make the panel wrong,
+regardless of how neat the agreement looks. In the degraded self-challenge path,
+identify a default assumption that could make the single-agent critique wrong.
 
 The synthesizer decides; cross-examination does not add votes. Preserve
 unresolved disagreement or assumptions in the synthesis rather than forcing
@@ -420,9 +431,14 @@ If one or more reviewers fail:
 
 - Continue with completed reviewers when at least one usable review exists.
 - Disclose which reviewer failed and whether its model was requested.
-- Rank consensus by completed reviewer count, not the original target of three.
+- Rank surviving findings by impact, actionability, confidence, and evidence
+  quality. Completed reviewer count must be disclosed as support and may be used
+  at most as a tie-breaker, not as the ranking root or proof.
 - Do not invent missing reviewer findings.
-- If no reviewer returns usable findings, fall back to `single-agent` critique and disclose the fallback.
+- If no reviewer returns usable findings under `max`, fall back to
+  `single-agent` critique, apply the degraded max self-challenge behavior, and
+  disclose the fallback. Otherwise, fall back to `single-agent` critique and
+  disclose the fallback.
 
 ## Judge/Synthesizer Rules
 
@@ -443,7 +459,8 @@ write these lines. Keep each line to one sentence.
 ```text
 Execution path: <path> (adversarial-review, Updated: <date>)
 Reviewers: <launched count>; <agent type>; <model and effort for each, or model not changed / model diversity not confirmed>; three independent contexts <achieved | not achieved>
-Consensus ranking: <performed | not performed, with reason>
+Challenge round: <reviewer cross-examination | self-challenge pass | not required>
+Priority ranking: <performed | not performed, with reason>
 Premortem: <one sentence that names the most damaging credible failure>
 ```
 
@@ -455,6 +472,10 @@ Pre-launch status reports only whether a qualifying delta baseline was found.
 Post-review execution details may say the delta was reviewed only after completion.
 
 Never pretend agents were launched or models were changed. Say an agent was launched only if you personally invoked a tool for it in this conversation and can name the tool or agent. Say a model changed only if the runtime confirmed it or the subagent tool accepted a concrete model override. Otherwise say `model not changed`; retain the actual execution path and launched count.
+
+When degraded max behavior uses a self-challenge pass, disclose `independent
+consensus unavailable` and that true reviewer cross-examination was unavailable;
+do not invent launches, reviewer participation, or consensus.
 
 ## Portability Fallbacks
 
