@@ -660,7 +660,8 @@ class AdversarialReviewContractTests(unittest.TestCase):
 
         self.assertRegex(
             row,
-            r"(?i)(?:at|under) `auto` (?:and|or) `max`[^.]*challenge",
+            r"(?i)at `max`.*at `auto` when.*(?:material disagreement"
+            r"|suspected overstatement).*challenge",
         )
         self.assertRegex(
             row,
