@@ -5,7 +5,7 @@ description: 'Pressure-tests an idea, plan, or change by reusing compatible prio
 
 # Adversarial Review
 
-Updated: October 7, 2026
+Updated: November 19, 2026
 
 ## First Response Line
 
@@ -205,16 +205,10 @@ priority-ranked list and the recommended-changes list — cross-reference it.
 
 ## Model Diversity Heuristic
 
-The goal is three independent, high-effort reasoning contexts from OpenAI,
-Anthropic, and xAI. Select by **provider, tier, and generation, never by version
-number.** For xAI, choose the newest exposed frontier general-reasoning Grok
-model. Google and Gemini models are not eligible reviewer substitutes.
-
-**Never hardcode a model version — not in this file, and not in your selection
-reasoning.** A concrete version is wrong the moment the runtime updates, and a
-stale allow-list silently degrades the review by excluding models that did not
-exist when it was written. Enumerate what the runtime actually exposes at
-request time, then rank it.
+Build a panel of up to three independent reviewers from OpenAI, Google,
+Anthropic, and xAI. “Provider” here means the model developer: GPT and Gemini
+count separately even when both are served by `github-copilot`. Keep the
+runtime's serving-provider prefix on the model ID you actually dispatch.
 
 Selection rules:
 
@@ -225,23 +219,31 @@ Selection rules:
    independent contexts available without claiming model control, and disclose
    `model diversity not confirmed`. Capability Check derives the execution path
    from the selected count.
-2. **Use the preferred provider trio.** Assign one reviewer each from OpenAI,
-   Anthropic, and xAI. Independence comes from different providers, not from
-   three variants of one family. If a preferred provider is not exposed, fill
-   that one slot under rule 9; never use Google or Gemini.
-3. **Take each provider's frontier general-reasoning tier** — the tier that
-   provider positions for its hardest reasoning and agentic work — and the
-   newest generation of that tier.
+2. **Fill distinct provider slots first.** On a full panel, prefer OpenAI’s GPT
+   Astra and Google’s Gemini Carbon. Fill the third slot with a frontier
+   Anthropic Claude or xAI Grok. If both qualify, honor a requested provider;
+   otherwise prefer the more recent frontier release (Anthropic if release
+   dates are tied or unknown). If either of the first two is unavailable,
+   consider both Anthropic and xAI before using rule 9. The intensity cap still
+   applies: four eligible providers do not mean four reviewers.
+3. **Resolve the latest frontier generation at review time.** GPT-6.2 Astra
+   (`gpt-6.2-astra`) and Gemini 4 Carbon (`gemini-4-carbon`) are examples, not
+   version pins. Select the newest available frontier release in each preferred
+   line, including a catalog-identified successor. A newer release date on a
+   lightweight sibling does not make it the successor. If a line is absent,
+   consider that developer's other qualifying frontier models. If the user
+   explicitly requests an exact version, resolve that version in the live
+   catalog and disclose if it is unavailable rather than calling a substitute
+   by its name.
 4. **Exclude the small/fast tier.** Skip anything the runtime labels or markets
    as mini, small, flash, lite, nano, turbo, instant, fast, cheap, or
    economical, and any model presented as the lightweight sibling of a larger
    one. Judge by the runtime's own tier description at request time, not by a
    remembered list of names — tier labels change.
-5. **Reasoning effort: `xhigh` for every reviewer.** Request `xhigh` for each
-   selected model even when it exposes a higher setting. If a model does not
-   expose `xhigh`, or effort is not controllable, leave effort unset and
-   disclose the limitation rather than silently choosing another level or
-   implying that `xhigh` was set.
+5. **Match effort to the selected model.** Request `xhigh` when advertised,
+   even if `max` is available. If `xhigh` is absent but `high` is advertised,
+   request `high` and disclose the fallback. Otherwise leave effort unset and
+   disclose that limitation. Lack of `xhigh` alone does not disqualify a model.
 6. **Code review:** a code-specialized model may hold a reviewer slot only if it
    is that provider's frontier tier; otherwise keep general-reasoning models.
 7. **Never fabricate.** If a provider, model, or effort level is not actually
@@ -256,7 +258,7 @@ Selection rules:
    provider.** If only two preferred providers are exposed, give the third
    reviewer a different frontier model from one of those two providers. It must
    pass rules 3 and 4, and it must differ from the model that provider already
-   uses. The third model is never Google or Gemini and never a small tier.
+   uses; another effort variant of the same model does not qualify.
    Disclose `three contexts, two providers`. If no such model exists, reduce
    the count.
 10. **Pass an explicit `model` for every reviewer, then check it.** The runtime
@@ -578,7 +580,7 @@ participation, or consensus.
 | Style feedback | Prioritize defects, risks, assumptions, evidence, and tests |
 | Counting yourself as a reviewer | Consensus counts only independent reviewer contexts |
 | Claiming model diversity without model control | Say `model diversity not confirmed` |
-| Naming a specific model version | Select by provider tier and generation from what the runtime exposes now |
+| Treating example versions as a fixed roster | Resolve each family against the live catalog; honor exact versions when the user requests them |
 | Filling a reviewer slot with a small/fast model | Use rule 9 with a frontier model, or reduce the reviewer count and disclose it |
 | Dropping single-reviewer critical findings | Keep serious single-reviewer findings separately |
 | Letting reviewers influence each other | Give each reviewer the same target but not other reviewers' findings during first pass |
@@ -617,13 +619,13 @@ For the cache example, likely high-priority findings include auth leakage from s
 Disclosure example:
 
 ```text
-Adversarial review | Updated: October 7, 2026
+Adversarial review | Updated: November 19, 2026
 Target: plan text "cache all GET responses in memory for 10 minutes" sha256:c34a787626741d4c17aba7a421f9e45fda204450e49509c76754dc99b980fcca
 Review intensity: auto
 Prior review: not found
 Mode: Rubber Duck
-Execution path: multi-model-subagents (adversarial-review, Updated: October 7, 2026)
-Reviewers: 3; rubber-duck; one frontier model per preferred provider at xhigh; three independent contexts achieved
+Execution path: multi-model-subagents (adversarial-review, Updated: November 19, 2026)
+Reviewers: 3; rubber-duck; GPT-6.2 Astra (xhigh), Gemini 4 Carbon (high; xhigh unavailable), Claude Opus 5.5 (xhigh); three independent contexts achieved
 Challenge round: reviewer cross-examination
 Priority ranking: performed
 Premortem: a shared cache key serves one user's authorized response to another user.
