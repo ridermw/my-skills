@@ -19,6 +19,10 @@ All notable changes to the skills in this repo.
   available, or a disclosed independent- or self-challenge fallback otherwise.
   It then ranks surviving findings by evidence, impact, and actionability
   rather than treating consensus as proof.
+- **Reviewer roster** — full adversarial reviews now prefer the latest frontier
+  GPT Astra and Gemini Carbon plus Claude or Grok. GPT-6.2 Astra and Gemini 4
+  Carbon are live-catalog examples, not pins. Request `high` and disclose the
+  fallback when a reviewer supports `high` but not `xhigh`.
 
 ### Fixed
 - **`ado-pr-build-monitor`** — every poll now refreshes PR revisions and current

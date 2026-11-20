@@ -1036,16 +1036,17 @@ class AdversarialReviewContractTests(unittest.TestCase):
     def test_third_context_fallback_is_disclosed_as_two_providers(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
         self.assertIn("three contexts, two providers", models)
-        self.assertIn("never Google or Gemini", models)
-        for rule in (r"2\. \*\*Use the preferred provider trio\.\*\*", r"7\. \*\*Never fabricate\.\*\*"):
+        self.assertIn("another effort variant of the same model does not qualify", models)
+        for rule in (r"2\. \*\*Fill distinct provider slots first\.\*\*", r"7\. \*\*Never fabricate\.\*\*"):
             text = re.search(rule + r"(.*?)(?= \d+\. \*\*)", models).group(1)
             self.assertIn("rule 9", text, f"rule must defer to rule 9: {rule}")
 
-    def test_current_provider_trio_is_preserved(self):
+    def test_full_panel_refreshes_named_families_and_negotiates_effort(self):
         models = re.sub(r"\s+", " ", self.section("Model Diversity Heuristic"))
-        self.assertIn("OpenAI, Anthropic, and xAI", models)
-        self.assertIn("Google and Gemini models are not eligible", models)
-        self.assertIn("`xhigh` for every reviewer", models)
+        self.assertRegex(models, r"full panel, prefer OpenAI’s GPT Astra and Google’s Gemini Carbon.*third slot.*Anthropic Claude or xAI Grok")
+        self.assertRegex(models, r"`gpt-6\.2-astra`.*`gemini-4-carbon`.*not version pins.*newest available frontier release")
+        self.assertIn("count separately even when both are served by `github-copilot`", models)
+        self.assertRegex(models, r"`xhigh` is absent but `high` is advertised, request `high` and disclose the fallback")
 
 
 if __name__ == "__main__":
